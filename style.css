@@ -1527,7 +1527,7 @@ select.form-control {
 
 /* Notifications ARIA semantics */
 #notifications[aria-live] {
-  /* no visual change; just ensure attribute presence */
+  pointer-events: none;
 }
 
 /* Prevent background scroll when modal open */
@@ -1719,49 +1719,6 @@ select.form-control {
   animation: slideIn var(--duration-normal) var(--ease-standard);
 }
 
-/* Demo Mode Toggle */
-.demo-mode-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: var(--color-text-secondary);
-  font-size: 0.875rem;
-  cursor: pointer;
-  margin-right: 1rem;
-}
-
-.demo-mode-toggle input[type="checkbox"] {
-  appearance: none;
-  width: 1rem;
-  height: 1rem;
-  border: 2px solid var(--color-border);
-  border-radius: 0.25rem;
-  cursor: pointer;
-  position: relative;
-  background-color: var(--color-surface);
-}
-
-.demo-mode-toggle input[type="checkbox"]:checked {
-  background-color: var(--color-primary);
-  border-color: var(--color-primary);
-}
-
-.demo-mode-toggle input[type="checkbox"]:checked::after {
-  content: '✓';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: var(--color-white);
-  font-size: 0.75rem;
-  font-weight: bold;
-}
-
-.demo-mode-toggle:hover input[type="checkbox"] {
-  border-color: var(--color-primary);
-}
-
-/* Info Panel */
 .info-panel {
   position: fixed;
   top: 0;
