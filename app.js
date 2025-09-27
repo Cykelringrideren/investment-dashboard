@@ -162,7 +162,7 @@ class PortfolioDashboard {
 			}
 		}
 
-        // Try Yahoo Finance quote endpoint (symbol or ISIN). If 12+ chars and alnum, treat as ISIN and search first.
+		// Try Yahoo Finance quote endpoint (symbol or ISIN). If 12+ chars and alnum, treat as ISIN and search first.
 		try {
             let resolvedSymbol = symbol;
             if (/^[A-Z0-9]{12,}$/.test(symbol)) {
@@ -190,13 +190,16 @@ class PortfolioDashboard {
 			}
 			throw new Error('Yahoo response invalid');
 		} catch (error) {
-			// Fallback to demo/randomized price when Yahoo fails (e.g., CORS)
-			const demoData = this.demoPrices[symbol.toUpperCase()];
-			const price = demoData ? demoData.price : (Math.random() * 200 + 50);
-			const name = demoData ? demoData.name : `${symbol} Corporation`;
-			const payload = { price, name, currency: 'USD' };
-			this.setCachedPrice(cacheKey, payload);
-			return payload;
+			// If demo mode enabled and we have demo data, allow demo fallback; otherwise rethrow
+			if (this.apis.demoMode) {
+				const demoData = this.demoPrices[symbol.toUpperCase()];
+				if (demoData) {
+					const payload = { price: demoData.price, name: demoData.name, currency: 'USD' };
+					this.setCachedPrice(cacheKey, payload);
+					return payload;
+				}
+			}
+			throw error;
 		}
 	}
 
@@ -234,12 +237,15 @@ class PortfolioDashboard {
 			}
 			throw new Error('Crypto not found');
 		} catch (error) {
-			const demoData = this.demoPrices[keySymbol];
-			const price = demoData ? demoData.price : (Math.random() * 50000 + 1000);
-			const name = demoData ? demoData.name : symbol.charAt(0).toUpperCase() + symbol.slice(1);
-			const payload = { price, name, currency: 'USD' };
-			this.setCachedPrice(cacheKey, payload);
-			return payload;
+			if (this.apis.demoMode) {
+				const demoData = this.demoPrices[keySymbol];
+				const price = demoData ? demoData.price : (Math.random() * 50000 + 1000);
+				const name = demoData ? demoData.name : symbol.charAt(0).toUpperCase() + symbol.slice(1);
+				const payload = { price, name, currency: 'USD' };
+				this.setCachedPrice(cacheKey, payload);
+				return payload;
+			}
+			throw error;
 		}
 	}
 
