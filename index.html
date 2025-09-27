@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Investment Portfolio Dashboard</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
 </head>
 <body>
     <div class="container">
@@ -143,14 +143,9 @@
                 <h2>Growth Projections</h2>
                 <div class="projection-controls">
                     <label>
-                        Time Period:
-                        <select class="form-control" id="projectionPeriod">
-                            <option value="1">1 Year</option>
-                            <option value="2">2 Years</option>
-                            <option value="3">3 Years</option>
-                            <option value="5" selected>5 Years</option>
-                            <option value="10">10 Years</option>
-                        </select>
+                        Time Horizon:
+                        <input type="range" class="form-control" id="projectionPeriod" min="1" max="10" step="1" value="5" />
+                        <span id="projectionPeriodLabel">5 years</span>
                     </label>
                 </div>
             </div>

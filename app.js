@@ -13,15 +13,16 @@ class PortfolioDashboard {
         this.cryptoList = null;
         this.isLoading = false;
 
-        // API endpoints - using proxy-free alternatives
-        this.apis = {
-            // Alternative free APIs that work without CORS issues
-            alphavantage: "https://www.alphavantage.co/query",
-            coinGecko: "https://api.coingecko.com/api/v3/simple/price",
-            cryptoList: "https://api.coingecko.com/api/v3/coins/list",
-            // Fallback demo data
-            demoMode: true
-        };
+		// API endpoints - using proxy-free alternatives
+		this.apis = {
+			// Yahoo Finance quote endpoint (may be subject to CORS depending on environment)
+			yahooQuote: "https://query1.finance.yahoo.com/v7/finance/quote?symbols=",
+			// CoinGecko endpoints
+			coinGecko: "https://api.coingecko.com/api/v3/simple/price",
+			cryptoList: "https://api.coingecko.com/api/v3/coins/list",
+			// Fallback demo data toggle
+			demoMode: false
+		};
 
         // Demo price data for testing
         this.demoPrices = {
@@ -55,6 +56,9 @@ class PortfolioDashboard {
         setTimeout(() => {
             this.initCharts();
         }, 500);
+
+		// Initialize projection slider label
+		this.updateProjectionLabel();
     }
 
     loadSampleData() {
@@ -107,76 +111,111 @@ class PortfolioDashboard {
         }
     }
 
-    async fetchStockPrice(symbol) {
-        // In demo mode, use predefined prices
-        if (this.apis.demoMode || !symbol) {
-            const demoData = this.demoPrices[symbol.toUpperCase()];
-            if (demoData) {
-                return {
-                    price: demoData.price,
-                    name: demoData.name,
-                    currency: 'USD'
-                };
-            }
-        }
+	async fetchStockPrice(symbol, { force = false } = {}) {
+		if (!symbol) {
+			return { price: 0, name: 'Unknown', currency: 'USD' };
+		}
 
-        // Try real API call (may fail due to CORS)
-        try {
-            // This would normally require an API key for Alpha Vantage
-            // Using demo data as fallback
-            throw new Error('Using demo data');
-        } catch (error) {
-            // Return demo data or estimated price
-            const basePrice = Math.random() * 200 + 50;
-            return {
-                price: basePrice,
-                name: `${symbol} Corporation`,
-                currency: 'USD'
-            };
-        }
-    }
+		const cacheKey = `stock:${symbol.toUpperCase()}`;
+		const cached = this.getCachedPrice(cacheKey);
+		if (cached && !force) {
+			return cached;
+		}
 
-    async fetchCryptoPrice(symbol) {
-        try {
-            const cryptoId = this.getCryptoId(symbol);
-            if (!cryptoId && this.demoPrices[symbol.toLowerCase()]) {
-                const demoData = this.demoPrices[symbol.toLowerCase()];
-                return {
-                    price: demoData.price,
-                    name: demoData.name,
-                    currency: 'USD'
-                };
-            }
+		// In demo mode, use predefined prices if available
+		if (this.apis.demoMode) {
+			const demoData = this.demoPrices[symbol.toUpperCase()];
+			if (demoData) {
+				const payload = { price: demoData.price, name: demoData.name, currency: 'USD' };
+				this.setCachedPrice(cacheKey, payload);
+				return payload;
+			}
+		}
 
-            if (cryptoId) {
-                const response = await fetch(`${this.apis.coinGecko}?ids=${cryptoId}&vs_currencies=usd`);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data[cryptoId] && data[cryptoId].usd) {
-                        return {
-                            price: data[cryptoId].usd,
-                            name: this.getCryptoName(cryptoId),
-                            currency: 'USD'
-                        };
-                    }
-                }
-            }
-            
-            throw new Error('Crypto not found');
-        } catch (error) {
-            // Return demo data
-            const demoData = this.demoPrices[symbol.toLowerCase()];
-            if (demoData) {
-                return demoData;
-            }
-            
-            return {
-                price: Math.random() * 50000 + 1000,
-                name: symbol.charAt(0).toUpperCase() + symbol.slice(1),
-                currency: 'USD'
-            };
-        }
-    }
+		// Try Yahoo Finance quote endpoint
+		try {
+			const url = `${this.apis.yahooQuote}${encodeURIComponent(symbol)}`;
+			const response = await fetch(url);
+			if (response.ok) {
+				const data = await response.json();
+				const result = data && data.quoteResponse && data.quoteResponse.result && data.quoteResponse.result[0];
+				if (result && typeof result.regularMarketPrice === 'number') {
+					const price = result.regularMarketPrice;
+					const name = result.longName || result.shortName || symbol;
+					const currency = result.currency || 'USD';
+					const payload = { price, name, currency };
+					this.setCachedPrice(cacheKey, payload);
+					return payload;
+				}
+			}
+			throw new Error('Yahoo response invalid');
+		} catch (error) {
+			// Fallback to demo/randomized price when Yahoo fails (e.g., CORS)
+			const demoData = this.demoPrices[symbol.toUpperCase()];
+			const price = demoData ? demoData.price : (Math.random() * 200 + 50);
+			const name = demoData ? demoData.name : `${symbol} Corporation`;
+			const payload = { price, name, currency: 'USD' };
+			this.setCachedPrice(cacheKey, payload);
+			return payload;
+		}
+	}
+
+	async fetchCryptoPrice(symbol, { force = false } = {}) {
+		if (!symbol) {
+			return { price: 0, name: 'Unknown', currency: 'USD' };
+		}
+
+		const keySymbol = symbol.toLowerCase();
+		const cacheKey = `crypto:${keySymbol}`;
+		const cached = this.getCachedPrice(cacheKey);
+		if (cached && !force) {
+			return cached;
+		}
+
+		try {
+			const cryptoId = this.getCryptoId(symbol);
+			if (!cryptoId && this.demoPrices[keySymbol]) {
+				const demoData = this.demoPrices[keySymbol];
+				const payload = { price: demoData.price, name: demoData.name, currency: 'USD' };
+				this.setCachedPrice(cacheKey, payload);
+				return payload;
+			}
+
+			if (cryptoId) {
+				const response = await fetch(`${this.apis.coinGecko}?ids=${cryptoId}&vs_currencies=usd`);
+				if (response.ok) {
+					const data = await response.json();
+					if (data[cryptoId] && data[cryptoId].usd) {
+						const payload = { price: data[cryptoId].usd, name: this.getCryptoName(cryptoId), currency: 'USD' };
+						this.setCachedPrice(cacheKey, payload);
+						return payload;
+					}
+				}
+			}
+			throw new Error('Crypto not found');
+		} catch (error) {
+			const demoData = this.demoPrices[keySymbol];
+			const price = demoData ? demoData.price : (Math.random() * 50000 + 1000);
+			const name = demoData ? demoData.name : symbol.charAt(0).toUpperCase() + symbol.slice(1);
+			const payload = { price, name, currency: 'USD' };
+			this.setCachedPrice(cacheKey, payload);
+			return payload;
+		}
+	}
+
+	getCachedPrice(cacheKey) {
+		const entry = this.priceCache.get(cacheKey);
+		if (!entry) return null;
+		if (Date.now() - entry.timestamp < this.cacheTimeout) {
+			return entry.data;
+		}
+		this.priceCache.delete(cacheKey);
+		return null;
+	}
+
+	setCachedPrice(cacheKey, data) {
+		this.priceCache.set(cacheKey, { timestamp: Date.now(), data });
+	}
 
     getCryptoId(symbol) {
         if (!this.cryptoList) return null;
@@ -226,14 +265,14 @@ class PortfolioDashboard {
         }
     }
 
-    async refreshAssetPrice(asset) {
+	async refreshAssetPrice(asset, { force = false } = {}) {
         try {
             let priceData;
             
-            if (asset.type === 'Crypto') {
-                priceData = await this.fetchCryptoPrice(asset.symbol);
+			if (asset.type === 'Crypto') {
+				priceData = await this.fetchCryptoPrice(asset.symbol, { force });
             } else {
-                priceData = await this.fetchStockPrice(asset.symbol);
+				priceData = await this.fetchStockPrice(asset.symbol, { force });
             }
             
             asset.currentPrice = priceData.price;
@@ -247,26 +286,25 @@ class PortfolioDashboard {
         }
     }
 
-    async refreshAllPrices() {
-        this.setLoading(true);
-        
-        try {
-            // Simulate some price changes for demo
-            for (const asset of this.assets) {
-                const variation = (Math.random() - 0.5) * 0.1; // ±5% change
-                asset.currentPrice = asset.currentPrice * (1 + variation);
-                asset.currentValue = asset.currentPrice * asset.shares;
-                asset.lastUpdated = new Date().toISOString();
-            }
-            
-            this.refreshAllData();
-            this.showNotification('Prices updated successfully!', 'success');
-        } catch (error) {
-            this.showNotification('Some prices failed to update', 'warning');
-        } finally {
-            this.setLoading(false);
-        }
-    }
+	async refreshAllPrices() {
+		this.setLoading(true);
+		try {
+			const results = await Promise.all(this.assets.map(asset => this.refreshAssetPrice(asset, { force: true })));
+			const successCount = results.filter(Boolean).length;
+			if (successCount === this.assets.length) {
+				this.showNotification('Prices updated successfully!', 'success');
+			} else if (successCount > 0) {
+				this.showNotification('Some prices failed to update', 'warning');
+			} else {
+				this.showNotification('Failed to update prices', 'error');
+			}
+			this.refreshAllData();
+		} catch (error) {
+			this.showNotification('Failed to update prices', 'error');
+		} finally {
+			this.setLoading(false);
+		}
+	}
 
     setLoading(loading) {
         this.isLoading = loading;
@@ -325,11 +363,15 @@ class PortfolioDashboard {
         document.getElementById('addContributionBtn').addEventListener('click', () => this.openContributionModal());
         document.getElementById('contributionForm').addEventListener('submit', (e) => this.handleContributionSubmit(e));
 
-        // Projections
-        document.getElementById('projectionPeriod').addEventListener('change', () => {
-            this.renderAssetProjections();
-            this.updateProjectionChart();
-        });
+		// Projections (slider)
+		const projectionSlider = document.getElementById('projectionPeriod');
+		if (projectionSlider) {
+			projectionSlider.addEventListener('input', () => {
+				this.updateProjectionLabel();
+				this.renderAssetProjections();
+				this.updateProjectionChart();
+			});
+		}
 
         // Export
         document.getElementById('exportBtn').addEventListener('click', () => this.exportData());
@@ -955,9 +997,9 @@ class PortfolioDashboard {
 
         const performanceData = validAssets.map(asset => ({
             label: asset.symbol,
-            gain: asset.currentValue - asset.totalContributed,
-            gainPercent: this.calculateGainPercent(asset)
-        })).filter(data => data.gainPercent !== null && isFinite(data.gainPercent));
+            actualGainPercent: this.calculateGainPercent(asset),
+            expectedGainPercent: this.calculateExpectedGainPercent(asset)
+        })).filter(data => data.actualGainPercent !== null && isFinite(data.actualGainPercent));
 
         if (performanceData.length === 0) {
             return;
@@ -967,22 +1009,31 @@ class PortfolioDashboard {
             type: 'bar',
             data: {
                 labels: performanceData.map(d => d.label),
-                datasets: [{
-                    label: 'Gain/Loss (%)',
-                    data: performanceData.map(d => d.gainPercent ?? 0),
-                    backgroundColor: performanceData.map(d => {
-                        const percent = d.gainPercent ?? 0;
-                        return percent >= 0 ? '#1FB8CD' : '#B4413C';
-                    }),
-                    borderWidth: 1
-                }]
+                datasets: [
+                    {
+                        label: 'Actual Gain %',
+                        data: performanceData.map(d => d.actualGainPercent ?? 0),
+                        backgroundColor: performanceData.map(d => {
+                            const percent = d.actualGainPercent ?? 0;
+                            return percent >= 0 ? '#1FB8CD' : '#B4413C';
+                        }),
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Expected Gain %',
+                        data: performanceData.map(d => d.expectedGainPercent ?? 0),
+                        backgroundColor: 'rgba(98, 108, 113, 0.35)',
+                        borderColor: 'rgba(98, 108, 113, 0.6)',
+                        borderWidth: 1
+                    }
+                ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        display: false
+                        display: true
                     }
                 },
                 scales: {
@@ -1118,6 +1169,15 @@ class PortfolioDashboard {
         });
     }
 
+    updateProjectionLabel() {
+        const slider = document.getElementById('projectionPeriod');
+        const label = document.getElementById('projectionPeriodLabel');
+        if (slider && label) {
+            const years = parseInt(slider.value) || 1;
+            label.textContent = `${years} ${years === 1 ? 'year' : 'years'}`;
+        }
+    }
+
     updateTypeBreakdownChart() {
         const ctx = document.getElementById('typeBreakdownChart');
         if (!ctx) return;
@@ -1198,6 +1258,23 @@ class PortfolioDashboard {
         }
         const gain = (asset.currentValue || 0) - asset.totalContributed;
         return this.calculatePercentage(gain, asset.totalContributed);
+    }
+
+    calculateExpectedGainPercent(asset) {
+        if (!asset || !asset.totalContributed || asset.totalContributed <= 0 || !asset.dateAdded) {
+            return null;
+        }
+        const years = this.yearsSince(asset.dateAdded);
+        const expectedValue = asset.totalContributed * Math.pow(1 + (asset.expectedGrowthRate / 100), years);
+        const expectedGain = expectedValue - asset.totalContributed;
+        return this.calculatePercentage(expectedGain, asset.totalContributed);
+    }
+
+    yearsSince(dateString) {
+        const start = new Date(dateString);
+        const now = new Date();
+        const msInYear = 365 * 24 * 60 * 60 * 1000;
+        return Math.max(0, (now - start) / msInYear);
     }
 
     closeModal(modal) {
