@@ -1269,9 +1269,11 @@ select.form-control {
   width: 100%;
   max-width: 500px;
   max-height: 90vh;
-  overflow-y: auto;
+  overflow: visible;
   margin: 0 auto;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-header {
@@ -1308,6 +1310,8 @@ select.form-control {
 
 .modal-body {
   padding: var(--space-20);
+  overflow-y: auto;
+  max-height: 60vh;
 }
 
 .modal-footer {

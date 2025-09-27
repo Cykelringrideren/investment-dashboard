@@ -162,9 +162,19 @@ class PortfolioDashboard {
 			}
 		}
 
-		// Try Yahoo Finance quote endpoint
+        // Try Yahoo Finance quote endpoint (symbol or ISIN). If 12+ chars and alnum, treat as ISIN and search first.
 		try {
-			const url = `${this.apis.yahooQuote}${encodeURIComponent(symbol)}`;
+            let resolvedSymbol = symbol;
+            if (/^[A-Z0-9]{12,}$/.test(symbol)) {
+                const search = await fetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(symbol)}&quotesCount=1&newsCount=0`);
+                if (search.ok) {
+                    const sdata = await search.json();
+                    if (sdata && sdata.quotes && sdata.quotes[0] && sdata.quotes[0].symbol) {
+                        resolvedSymbol = sdata.quotes[0].symbol;
+                    }
+                }
+            }
+            const url = `${this.apis.yahooQuote}${encodeURIComponent(resolvedSymbol)}`;
 			const response = await fetch(url);
 			if (response.ok) {
 				const data = await response.json();
@@ -782,9 +792,13 @@ class PortfolioDashboard {
             form.shares.value = asset.shares;
             form.totalContributed.value = asset.totalContributed;
             form.expectedGrowthRate.value = asset.expectedGrowthRate;
+            const currencySelect = document.getElementById('assetCurrency');
+            if (currencySelect && asset.currency) currencySelect.value = asset.currency;
         } else {
             form.reset();
             form.expectedGrowthRate.value = 7.0;
+            const currencySelect = document.getElementById('assetCurrency');
+            if (currencySelect) currencySelect.value = this.getDisplayCurrency();
         }
 
         modal.classList.remove('hidden');
@@ -805,6 +819,7 @@ class PortfolioDashboard {
             return;
         }
 
+        const currencySelect = document.getElementById('assetCurrency');
         const assetData = {
             name: formData.get('name'),
             symbol: symbol,
@@ -814,12 +829,16 @@ class PortfolioDashboard {
             totalContributed: parseFloat(formData.get('totalContributed')),
             expectedGrowthRate: parseFloat(formData.get('expectedGrowthRate')) || 7.0,
             dateAdded: this.editingAsset ? this.editingAsset.dateAdded : new Date().toISOString().split('T')[0],
-            lastUpdated: new Date().toISOString()
+            lastUpdated: new Date().toISOString(),
+            currency: currencySelect ? currencySelect.value : 'USD'
         };
 
-        // Try to infer currency from last validation or cached fetch
+        // Try to infer currency from quote if available; override select if present
         const guessed = await this.validateAndFetchAssetData(symbol, type);
-        assetData.currency = guessed && guessed.currency ? guessed.currency : 'USD';
+        if (guessed && guessed.currency) {
+            assetData.currency = guessed.currency;
+            if (currencySelect) currencySelect.value = guessed.currency;
+        }
         assetData.currentValue = assetData.currentPrice * assetData.shares;
 
         if (this.editingAsset) {
