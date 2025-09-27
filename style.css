@@ -929,6 +929,7 @@ select.form-control {
   color: var(--color-text);
   position: sticky;
   top: 0;
+  z-index: 1;
 }
 
 .assets-table th.sortable {
@@ -963,6 +964,7 @@ select.form-control {
   padding: var(--space-12);
   border-bottom: 1px solid var(--color-card-border);
   vertical-align: top;
+  font-variant-numeric: tabular-nums;
 }
 
 .assets-table tbody tr:hover {
@@ -1405,6 +1407,16 @@ select.form-control {
 
 .text-right {
   text-align: right;
+}
+
+/* Notifications ARIA semantics */
+#notifications[aria-live] {
+  /* no visual change; just ensure attribute presence */
+}
+
+/* Prevent background scroll when modal open */
+.no-scroll {
+  overflow: hidden;
 }
 
 .text-secondary {

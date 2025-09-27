@@ -40,6 +40,36 @@ class PortfolioDashboard {
         this.init();
     }
 
+    trapFocus(modal) {
+        const focusableSelectors = [
+            'a[href]', 'area[href]', 'input:not([disabled])', 'select:not([disabled])',
+            'textarea:not([disabled])', 'button:not([disabled])', 'iframe', 'object', 'embed',
+            '[contenteditable]', '[tabindex]:not([tabindex="-1"])'
+        ];
+        const focusable = modal.querySelectorAll(focusableSelectors.join(','));
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        first.focus();
+
+        const handleKeydown = (e) => {
+            if (e.key !== 'Tab') return;
+            if (e.shiftKey) {
+                if (document.activeElement === first) {
+                    e.preventDefault();
+                    last.focus();
+                }
+            } else {
+                if (document.activeElement === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
+            }
+        };
+
+        modal.addEventListener('keydown', handleKeydown);
+    }
+
     async init() {
         this.setupEventListeners();
         await this.loadCryptoList();
@@ -322,6 +352,8 @@ class PortfolioDashboard {
             container = document.createElement('div');
             container.id = 'notifications';
             container.className = 'notifications-container';
+            container.setAttribute('role', 'status');
+            container.setAttribute('aria-live', 'polite');
             document.body.appendChild(container);
         }
 
@@ -351,12 +383,39 @@ class PortfolioDashboard {
         // Tab navigation
         document.querySelectorAll('.nav-tab').forEach(tab => {
             tab.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
+            tab.addEventListener('keydown', (e) => {
+                const tabs = Array.from(document.querySelectorAll('.nav-tab'));
+                const currentIndex = tabs.indexOf(e.currentTarget);
+                if (e.key === 'ArrowRight') {
+                    const next = tabs[(currentIndex + 1) % tabs.length];
+                    next.focus();
+                } else if (e.key === 'ArrowLeft') {
+                    const prev = tabs[(currentIndex - 1 + tabs.length) % tabs.length];
+                    prev.focus();
+                } else if (e.key === 'Home') {
+                    tabs[0].focus();
+                } else if (e.key === 'End') {
+                    tabs[tabs.length - 1].focus();
+                } else if (e.key === 'Enter' || e.key === ' ') {
+                    this.switchTab(e.currentTarget.dataset.tab);
+                }
+            });
         });
 
         // Asset management
         document.getElementById('addAssetBtn').addEventListener('click', () => this.openAssetModal());
         document.getElementById('assetForm').addEventListener('submit', (e) => this.handleAssetSubmit(e));
-        document.getElementById('assetSearch').addEventListener('input', (e) => this.handleAssetSearch(e));
+        const assetSearch = document.getElementById('assetSearch');
+        if (assetSearch) {
+            let debounceTimer = null;
+            assetSearch.addEventListener('input', (e) => {
+                clearTimeout(debounceTimer);
+                const value = e.target.value;
+                debounceTimer = setTimeout(() => {
+                    this.handleAssetSearch({ target: { value } });
+                }, 200);
+            });
+        }
         document.getElementById('refreshPricesBtn').addEventListener('click', () => this.refreshAllPrices());
 
         // Contributions
@@ -387,6 +446,14 @@ class PortfolioDashboard {
                     this.closeModal(overlay.closest('.modal'));
                 }
             });
+        });
+
+        // Escape to close active modal
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const openModal = document.querySelector('.modal:not(.hidden)');
+                if (openModal) this.closeModal(openModal);
+            }
         });
 
         // Table sorting
@@ -440,12 +507,29 @@ class PortfolioDashboard {
 
     switchTab(tabName) {
         // Update active tab
-        document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
-        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+        document.querySelectorAll('.nav-tab').forEach(tab => {
+            tab.classList.remove('active');
+            tab.setAttribute('aria-selected', 'false');
+            tab.setAttribute('tabindex', '-1');
+        });
+        const activeTab = document.querySelector(`[data-tab="${tabName}"]`);
+        if (activeTab) {
+            activeTab.classList.add('active');
+            activeTab.setAttribute('aria-selected', 'true');
+            activeTab.setAttribute('tabindex', '0');
+            activeTab.focus();
+        }
 
         // Update active content
-        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-        document.getElementById(tabName).classList.add('active');
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+            content.setAttribute('aria-hidden', 'true');
+        });
+        const panel = document.getElementById(tabName);
+        if (panel) {
+            panel.classList.add('active');
+            panel.setAttribute('aria-hidden', 'false');
+        }
 
         // Update charts if necessary
         setTimeout(() => {
@@ -625,6 +709,8 @@ class PortfolioDashboard {
         }
 
         modal.classList.remove('hidden');
+        document.body.classList.add('no-scroll');
+        this.trapFocus(modal);
     }
 
     async handleAssetSubmit(e) {
@@ -707,6 +793,8 @@ class PortfolioDashboard {
         form.date.value = new Date().toISOString().split('T')[0];
         this.populateAssetSelect();
         modal.classList.remove('hidden');
+        document.body.classList.add('no-scroll');
+        this.trapFocus(modal);
     }
 
     handleContributionSubmit(e) {
@@ -1286,6 +1374,13 @@ class PortfolioDashboard {
         // Clear validation messages
         const validationMsg = document.getElementById('symbolValidation');
         if (validationMsg) validationMsg.remove();
+
+        // release scroll lock
+        document.body.classList.remove('no-scroll');
+
+        // return focus to triggering tab if any
+        const activeTab = document.querySelector('.nav-tab.active');
+        if (activeTab) activeTab.focus();
     }
 
     exportData() {

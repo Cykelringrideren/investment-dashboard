@@ -37,16 +37,16 @@
             </div>
         </header>
 
-        <nav class="nav-tabs">
-            <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
-            <button class="nav-tab" data-tab="assets">Assets</button>
-            <button class="nav-tab" data-tab="contributions">Contributions</button>
-            <button class="nav-tab" data-tab="projections">Projections</button>
-            <button class="nav-tab" data-tab="reports">Reports</button>
+        <nav class="nav-tabs" role="tablist">
+            <button class="nav-tab active" id="tab-dashboard" role="tab" aria-controls="dashboard" aria-selected="true" tabindex="0" data-tab="dashboard">Dashboard</button>
+            <button class="nav-tab" id="tab-assets" role="tab" aria-controls="assets" aria-selected="false" tabindex="-1" data-tab="assets">Assets</button>
+            <button class="nav-tab" id="tab-contributions" role="tab" aria-controls="contributions" aria-selected="false" tabindex="-1" data-tab="contributions">Contributions</button>
+            <button class="nav-tab" id="tab-projections" role="tab" aria-controls="projections" aria-selected="false" tabindex="-1" data-tab="projections">Projections</button>
+            <button class="nav-tab" id="tab-reports" role="tab" aria-controls="reports" aria-selected="false" tabindex="-1" data-tab="reports">Reports</button>
         </nav>
 
         <!-- Dashboard Tab -->
-        <div id="dashboard" class="tab-content active">
+        <div id="dashboard" class="tab-content active" role="tabpanel" aria-labelledby="tab-dashboard" aria-hidden="false">
             <div class="dashboard-grid">
                 <div class="card">
                     <div class="card__body">
@@ -76,7 +76,7 @@
         </div>
 
         <!-- Assets Tab -->
-        <div id="assets" class="tab-content">
+        <div id="assets" class="tab-content" role="tabpanel" aria-labelledby="tab-assets" aria-hidden="true">
             <div class="section-header">
                 <h2>Asset Management</h2>
                 <div class="section-actions">
@@ -93,12 +93,12 @@
                                     <th class="sortable" data-sort="name">Asset Name</th>
                                     <th class="sortable" data-sort="type">Type</th>
                                     <th class="sortable" data-sort="symbol">Symbol</th>
-                                    <th class="sortable" data-sort="currentPrice">Price</th>
-                                    <th class="sortable" data-sort="shares">Shares</th>
-                                    <th class="sortable" data-sort="currentValue">Current Value</th>
-                                    <th class="sortable" data-sort="totalContributed">Contributed</th>
-                                    <th class="sortable" data-sort="gain">Gain/Loss</th>
-                                    <th class="sortable" data-sort="expectedGrowthRate">Growth Rate</th>
+                                    <th class="sortable text-right" data-sort="currentPrice">Price</th>
+                                    <th class="sortable text-right" data-sort="shares">Shares</th>
+                                    <th class="sortable text-right" data-sort="currentValue">Current Value</th>
+                                    <th class="sortable text-right" data-sort="totalContributed">Contributed</th>
+                                    <th class="sortable text-right" data-sort="gain">Gain/Loss</th>
+                                    <th class="sortable text-right" data-sort="expectedGrowthRate">Growth Rate</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -112,7 +112,7 @@
         </div>
 
         <!-- Contributions Tab -->
-        <div id="contributions" class="tab-content">
+        <div id="contributions" class="tab-content" role="tabpanel" aria-labelledby="tab-contributions" aria-hidden="true">
             <div class="section-header">
                 <h2>Contribution Tracking</h2>
                 <button class="btn btn--primary" id="addContributionBtn">Add Contribution</button>
@@ -138,7 +138,7 @@
         </div>
 
         <!-- Projections Tab -->
-        <div id="projections" class="tab-content">
+        <div id="projections" class="tab-content" role="tabpanel" aria-labelledby="tab-projections" aria-hidden="true">
             <div class="section-header">
                 <h2>Growth Projections</h2>
                 <div class="projection-controls">
@@ -170,7 +170,7 @@
         </div>
 
         <!-- Reports Tab -->
-        <div id="reports" class="tab-content">
+        <div id="reports" class="tab-content" role="tabpanel" aria-labelledby="tab-reports" aria-hidden="true">
             <div class="section-header">
                 <h2>Reports & Analysis</h2>
                 <div class="report-controls">
@@ -204,12 +204,12 @@
     </div>
 
     <!-- Asset Modal -->
-    <div id="assetModal" class="modal hidden">
+    <div id="assetModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="assetModalTitle">
         <div class="modal-overlay">
             <div class="modal-content">
                 <div class="modal-header">
                     <h3 id="assetModalTitle">Add Asset</h3>
-                    <button class="modal-close">&times;</button>
+                    <button class="modal-close" aria-label="Close dialog">&times;</button>
                 </div>
                 <form id="assetForm">
                     <div class="modal-body">
@@ -260,12 +260,12 @@
     </div>
 
     <!-- Contribution Modal -->
-    <div id="contributionModal" class="modal hidden">
+    <div id="contributionModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="contributionModalTitle">
         <div class="modal-overlay">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3>Add Contribution</h3>
-                    <button class="modal-close">&times;</button>
+                    <h3 id="contributionModalTitle">Add Contribution</h3>
+                    <button class="modal-close" aria-label="Close dialog">&times;</button>
                 </div>
                 <form id="contributionForm">
                     <div class="modal-body">
