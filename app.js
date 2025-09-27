@@ -73,6 +73,7 @@ class PortfolioDashboard {
     async init() {
         this.setupEventListeners();
         await this.loadCryptoList();
+        await this.loadFxRates();
         this.loadSampleData();
         this.updatePortfolioSummary();
         this.renderAssetsTable();
@@ -138,6 +139,23 @@ class PortfolioDashboard {
             }
         } catch (error) {
             console.log('Using demo mode for crypto data');
+        }
+    }
+
+    async loadFxRates() {
+        try {
+            const response = await fetch('https://api.exchangerate.host/latest?base=USD');
+            if (response.ok) {
+                const data = await response.json();
+                if (data && data.rates) {
+                    this.fxRates = data.rates;
+                }
+            }
+            if (!this.fxRates) {
+                this.fxRates = { USD: 1 };
+            }
+        } catch (e) {
+            this.fxRates = { USD: 1 };
         }
     }
 
@@ -434,6 +452,14 @@ class PortfolioDashboard {
             });
         }
         document.getElementById('refreshPricesBtn').addEventListener('click', () => this.refreshAllPrices());
+
+        // Display currency change -> refresh derived displays
+        const displayCurrencySelect = document.getElementById('displayCurrency');
+        if (displayCurrencySelect) {
+            displayCurrencySelect.addEventListener('change', () => {
+                this.refreshAllData();
+            });
+        }
 
         // Contributions
         document.getElementById('addContributionBtn').addEventListener('click', () => this.openContributionModal());
@@ -1024,11 +1050,16 @@ class PortfolioDashboard {
             return;
         }
 
+        const displayCur = this.getDisplayCurrency();
         container.innerHTML = this.assets.map(asset => {
             const currentValue = asset.currentValue || asset.totalContributed;
             const projectedValue = this.calculateProjectedValue(currentValue, asset.expectedGrowthRate, period);
             const projectedGain = projectedValue - currentValue;
             const totalReturnPercent = this.calculatePercentage(projectedGain, currentValue);
+
+            const currentDisplay = this.toDisplayCurrency(currentValue, asset.currency || 'USD');
+            const projectedDisplay = this.toDisplayCurrency(projectedValue, asset.currency || 'USD');
+            const projectedGainDisplay = this.toDisplayCurrency(projectedGain, asset.currency || 'USD');
 
             return `
                 <div class="projection-item">
@@ -1039,15 +1070,15 @@ class PortfolioDashboard {
                     <div class="projection-values">
                         <div class="projection-value">
                             <span>Current Value:</span>
-                            <span>${this.formatCurrency(currentValue)}</span>
+                            <span>${this.formatCurrency(currentDisplay, displayCur)}</span>
                         </div>
                         <div class="projection-value">
                             <span>Projected (${period}y):</span>
-                            <strong>${this.formatCurrency(projectedValue)}</strong>
+                            <strong>${this.formatCurrency(projectedDisplay, displayCur)}</strong>
                         </div>
                         <div class="projection-value">
                             <span>Expected Gain:</span>
-                            <strong>${this.formatCurrency(projectedGain)}</strong>
+                            <strong>${this.formatCurrency(projectedGainDisplay, displayCur)}</strong>
                         </div>
                         <div class="projection-value">
                             <span>Total Return:</span>
@@ -1069,6 +1100,7 @@ class PortfolioDashboard {
         
         const totalValue = this.assets.reduce((sum, asset) => sum + this.toDisplayCurrency((asset.currentValue || 0), asset.currency || 'USD'), 0);
         const totalContributed = this.assets.reduce((sum, asset) => sum + this.toDisplayCurrency(asset.totalContributed, asset.currency || 'USD'), 0);
+        const displayCur = this.getDisplayCurrency();
         
         const analyzedAssets = this.assets.filter(asset => asset && asset.totalContributed && asset.totalContributed > 0);
         const gainData = analyzedAssets.map(asset => ({
@@ -1093,11 +1125,11 @@ class PortfolioDashboard {
             <div class="performance-summary-grid">
                 <div class="performance-metric">
                     <span class="performance-metric-label">Portfolio Value</span>
-                    <span class="performance-metric-value">${this.formatCurrency(totalValue)}</span>
+                    <span class="performance-metric-value">${this.formatCurrency(totalValue, displayCur)}</span>
                 </div>
                 <div class="performance-metric">
                     <span class="performance-metric-label">Total Invested</span>
-                    <span class="performance-metric-value">${this.formatCurrency(totalContributed)}</span>
+                    <span class="performance-metric-value">${this.formatCurrency(totalContributed, displayCur)}</span>
                 </div>
                 <div class="performance-metric">
                     <span class="performance-metric-label">Best Performer</span>
