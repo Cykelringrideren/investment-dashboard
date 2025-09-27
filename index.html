@@ -15,6 +15,9 @@
                 <div class="header-actions">
                     <button class="btn btn--secondary" id="refreshPricesBtn">Refresh Prices</button>
                     <span class="last-refresh" id="lastRefresh">Never updated</span>
+                    <label class="demo-mode-toggle">
+                        <input type="checkbox" id="demoModeToggle" checked> Demo Mode
+                    </label>
                     <label class="sr-only" for="displayCurrency">Display Currency</label>
                     <select class="form-control" id="displayCurrency" title="Display Currency">
                         <option value="USD" selected>USD</option>
@@ -313,6 +316,23 @@
                     </div>
                 </form>
             </div>
+        </div>
+    </div>
+
+    <!-- Info Panel for Demo Mode -->
+    <div id="demoInfoPanel" class="info-panel hidden">
+        <div class="info-panel-content">
+            <h3>📊 Demo Mode Active</h3>
+            <p>The application is running with sample data to demonstrate all features:</p>
+            <ul>
+                <li>✅ <strong>Stocks</strong>: Apple, Microsoft, Tesla, and 30+ more companies</li>
+                <li>✅ <strong>ETFs</strong>: SPY, QQQ, VTI, and other popular funds</li>
+                <li>✅ <strong>Bonds</strong>: Treasury and corporate bond ETFs</li>
+                <li>✅ <strong>Crypto</strong>: Bitcoin, Ethereum, and major altcoins</li>
+                <li>✅ <strong>Multiple Currencies</strong>: USD, EUR, DKK, GBP, and more</li>
+            </ul>
+            <p>Try searching for any asset in the "Add Assets" dropdown to see all types working!</p>
+            <button class="btn btn--secondary" onclick="document.getElementById('demoInfoPanel').classList.add('hidden')">Got it!</button>
         </div>
     </div>
 
