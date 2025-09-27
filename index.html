@@ -15,9 +15,6 @@
                 <div class="header-actions">
                     <button class="btn btn--secondary" id="refreshPricesBtn">Refresh Prices</button>
                     <span class="last-refresh" id="lastRefresh">Never updated</span>
-                    <label class="demo-mode-toggle">
-                        <input type="checkbox" id="demoModeToggle" checked> Demo Mode
-                    </label>
                     <label class="sr-only" for="displayCurrency">Display Currency</label>
                     <select class="form-control" id="displayCurrency" title="Display Currency">
                         <option value="USD" selected>USD</option>
@@ -49,12 +46,13 @@
             </div>
         </header>
 
-        <nav class="nav-tabs" role="tablist">
+            <nav class="nav-tabs" role="tablist">
             <button class="nav-tab active" id="tab-dashboard" role="tab" aria-controls="dashboard" aria-selected="true" tabindex="0" data-tab="dashboard">Dashboard</button>
             <button class="nav-tab" id="tab-assets" role="tab" aria-controls="assets" aria-selected="false" tabindex="-1" data-tab="assets">Assets</button>
             <button class="nav-tab" id="tab-contributions" role="tab" aria-controls="contributions" aria-selected="false" tabindex="-1" data-tab="contributions">Contributions</button>
             <button class="nav-tab" id="tab-projections" role="tab" aria-controls="projections" aria-selected="false" tabindex="-1" data-tab="projections">Projections</button>
             <button class="nav-tab" id="tab-reports" role="tab" aria-controls="reports" aria-selected="false" tabindex="-1" data-tab="reports">Reports</button>
+            <button class="nav-tab" id="tab-settings" role="tab" aria-controls="settings" aria-selected="false" tabindex="-1" data-tab="settings">Settings</button>
         </nav>
 
         <!-- Dashboard Tab -->
@@ -213,6 +211,118 @@
                 </div>
             </div>
         </div>
+
+        <!-- Settings Tab -->
+        <div id="settings" class="tab-content" role="tabpanel" aria-labelledby="tab-settings" aria-hidden="true">
+            <div class="section-header">
+                <h2>Settings & Configuration</h2>
+            </div>
+            
+            <div class="settings-grid">
+                <div class="card">
+                    <div class="card__body">
+                        <h3>API Configuration</h3>
+                        <div class="api-status" id="apiStatus">
+                            <!-- API status will be populated here -->
+                        </div>
+                        
+                        <div class="api-keys-section">
+                            <h4>API Keys (Optional)</h4>
+                            <p class="form-help">Add API keys for higher rate limits and premium features</p>
+                            
+                            <div class="form-group">
+                                <label class="form-label">Financial Modeling Prep API Key</label>
+                                <div class="api-key-input">
+                                    <input type="password" class="form-control" id="fmpApiKey" placeholder="Enter FMP API key">
+                                    <button class="btn btn--sm btn--secondary" onclick="app.setApiKey('fmp', document.getElementById('fmpApiKey').value)">Save</button>
+                                    <button class="btn btn--sm btn--outline" onclick="app.removeApiKey('fmp'); document.getElementById('fmpApiKey').value = ''">Remove</button>
+                                </div>
+                                <small class="form-help">Free tier: 250 requests/day. <a href="https://financialmodelingprep.com/developer/docs" target="_blank">Get API key</a></small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">Twelve Data API Key</label>
+                                <div class="api-key-input">
+                                    <input type="password" class="form-control" id="twelvedataApiKey" placeholder="Enter Twelve Data API key">
+                                    <button class="btn btn--sm btn--secondary" onclick="app.setApiKey('twelvedata', document.getElementById('twelvedataApiKey').value)">Save</button>
+                                    <button class="btn btn--sm btn--outline" onclick="app.removeApiKey('twelvedata'); document.getElementById('twelvedataApiKey').value = ''">Remove</button>
+                                </div>
+                                <small class="form-help">Free tier: 800 requests/day. <a href="https://twelvedata.com/pricing" target="_blank">Get API key</a></small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">IEX Cloud API Key</label>
+                                <div class="api-key-input">
+                                    <input type="password" class="form-control" id="iexApiKey" placeholder="Enter IEX Cloud API key">
+                                    <button class="btn btn--sm btn--secondary" onclick="app.setApiKey('iex', document.getElementById('iexApiKey').value)">Save</button>
+                                    <button class="btn btn--sm btn--outline" onclick="app.removeApiKey('iex'); document.getElementById('iexApiKey').value = ''">Remove</button>
+                                </div>
+                                <small class="form-help">Free tier: 50,000 requests/month. <a href="https://iexcloud.io/pricing" target="_blank">Get API key</a></small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card__body">
+                        <h3>Backend Integration</h3>
+                        <div class="backend-status" id="backendStatus">
+                            <!-- Backend status will be populated here -->
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Backend URL</label>
+                            <input type="url" class="form-control" id="backendUrl" value="http://localhost:5000/api" placeholder="Backend API URL">
+                            <button class="btn btn--sm btn--secondary" onclick="app.updateBackendUrl(document.getElementById('backendUrl').value)">Update</button>
+                            <small class="form-help">Python backend with yfinance integration. See backend/README.md for setup.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <button class="btn btn--secondary" onclick="app.testBackendConnection()">Test Backend Connection</button>
+                            <button class="btn btn--outline" onclick="app.refreshApiStats()">Refresh API Stats</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card__body">
+                        <h3>Cache Management</h3>
+                        <div class="cache-stats" id="cacheStats">
+                            <!-- Cache stats will be populated here -->
+                        </div>
+                        
+                        <div class="form-group">
+                            <button class="btn btn--secondary" onclick="app.clearCache()">Clear Cache</button>
+                            <button class="btn btn--outline" onclick="app.exportCache()">Export Cache</button>
+                            <button class="btn btn--outline" onclick="app.showCacheStats()">Show Cache Stats</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card__body">
+                        <h3>Advanced Settings</h3>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Cache Duration (minutes)</label>
+                            <input type="number" class="form-control" id="cacheDuration" value="15" min="1" max="60">
+                            <small class="form-help">How long to cache price data before refreshing</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Request Timeout (seconds)</label>
+                            <input type="number" class="form-control" id="requestTimeout" value="10" min="3" max="30">
+                            <small class="form-help">Maximum time to wait for API responses</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <button class="btn btn--secondary" onclick="app.updateAdvancedSettings()">Apply Settings</button>
+                            <button class="btn btn--outline" onclick="app.resetToDefaults()">Reset to Defaults</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Asset Modal -->
@@ -241,25 +351,15 @@
                                 <option value="SEK">SEK</option>
                                 <option value="NOK">NOK</option>
                             </select>
-                            <small class="form-help">Affects Current Price and Cost Basis fields</small>
+                            <small class="form-help">Reflects the native currency of the chosen asset</small>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Type *</label>
-                            <select class="form-control" name="type" required>
-                                <option value="">Select Type</option>
-                                <option value="Stock">Stock</option>
-                                <option value="ETF">ETF</option>
-                                <option value="Crypto">Crypto</option>
-                                <option value="Bond">Bond</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
+                        
                         <div class="form-group">
                             <label class="form-label">Asset Name *</label>
                             <input type="text" class="form-control" name="name" required placeholder="Will be auto-filled">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Current Price *</label>
+                            <label class="form-label">Current Price * <small class="text-secondary" id="currentPriceCurrencyHint"></small></label>
                             <input type="number" class="form-control" name="currentPrice" step="0.01" min="0" required placeholder="Will be auto-filled">
                         </div>
                         <div class="form-group">
@@ -267,9 +367,9 @@
                             <input type="number" class="form-control" name="shares" step="0.01" min="0" required placeholder="Number of shares owned">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Total Cost Basis *</label>
+                            <label class="form-label">Total Cost Basis * <small class="text-secondary" id="costBasisCurrencyHint"></small></label>
                             <input type="number" class="form-control" name="totalContributed" step="0.01" min="0" required placeholder="Total amount invested">
-                            <small class="form-help">Recorded in the selected asset currency</small>
+                            <small class="form-help">Recorded in the asset's native currency</small>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Expected Annual Growth Rate (%)</label>
@@ -319,22 +419,7 @@
         </div>
     </div>
 
-    <!-- Info Panel for Demo Mode -->
-    <div id="demoInfoPanel" class="info-panel hidden">
-        <div class="info-panel-content">
-            <h3>📊 Demo Mode Active</h3>
-            <p>The application is running with sample data to demonstrate all features:</p>
-            <ul>
-                <li>✅ <strong>Stocks</strong>: Apple, Microsoft, Tesla, and 30+ more companies</li>
-                <li>✅ <strong>ETFs</strong>: SPY, QQQ, VTI, and other popular funds</li>
-                <li>✅ <strong>Bonds</strong>: Treasury and corporate bond ETFs</li>
-                <li>✅ <strong>Crypto</strong>: Bitcoin, Ethereum, and major altcoins</li>
-                <li>✅ <strong>Multiple Currencies</strong>: USD, EUR, DKK, GBP, and more</li>
-            </ul>
-            <p>Try searching for any asset in the "Add Assets" dropdown to see all types working!</p>
-            <button class="btn btn--secondary" onclick="document.getElementById('demoInfoPanel').classList.add('hidden')">Got it!</button>
-        </div>
-    </div>
+    
 
     <!-- Notifications Container -->
     <div id="notifications" class="notifications-container"></div>
