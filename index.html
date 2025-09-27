@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investment Portfolio Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-title">
+                <h1>Investment Portfolio Dashboard</h1>
+                <div class="header-actions">
+                    <button class="btn btn--secondary" id="refreshPricesBtn">Refresh Prices</button>
+                    <span class="last-refresh" id="lastRefresh">Never updated</span>
+                </div>
+            </div>
+            <div class="header-stats">
+                <div class="stat-card">
+                    <span class="stat-label">Total Value</span>
+                    <span class="stat-value" id="totalValue">$0.00</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Total Contributed</span>
+                    <span class="stat-value" id="totalContributed">$0.00</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Total Gain</span>
+                    <span class="stat-value gain" id="totalGain">$0.00</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Gain %</span>
+                    <span class="stat-value gain" id="totalGainPercent">0.00%</span>
+                </div>
+            </div>
+        </header>
+
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
+            <button class="nav-tab" data-tab="assets">Assets</button>
+            <button class="nav-tab" data-tab="contributions">Contributions</button>
+            <button class="nav-tab" data-tab="projections">Projections</button>
+            <button class="nav-tab" data-tab="reports">Reports</button>
+        </nav>
+
+        <!-- Dashboard Tab -->
+        <div id="dashboard" class="tab-content active">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <div class="card__body">
+                        <h3>Portfolio Allocation</h3>
+                        <div class="chart-container" style="position: relative; height: 300px;">
+                            <canvas id="allocationChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card__body">
+                        <h3>Asset Performance</h3>
+                        <div class="chart-container" style="position: relative; height: 300px;">
+                            <canvas id="performanceChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="card full-width">
+                    <div class="card__body">
+                        <h3>Recent Assets</h3>
+                        <div class="recent-assets-table" id="recentAssetsTable">
+                            <!-- Recent assets will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Assets Tab -->
+        <div id="assets" class="tab-content">
+            <div class="section-header">
+                <h2>Asset Management</h2>
+                <div class="section-actions">
+                    <input type="text" class="form-control search-input" placeholder="Search assets..." id="assetSearch">
+                    <button class="btn btn--primary" id="addAssetBtn">Add Asset</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card__body">
+                    <div class="table-container">
+                        <table class="assets-table" id="assetsTable">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" data-sort="name">Asset Name</th>
+                                    <th class="sortable" data-sort="type">Type</th>
+                                    <th class="sortable" data-sort="symbol">Symbol</th>
+                                    <th class="sortable" data-sort="currentPrice">Price</th>
+                                    <th class="sortable" data-sort="shares">Shares</th>
+                                    <th class="sortable" data-sort="currentValue">Current Value</th>
+                                    <th class="sortable" data-sort="totalContributed">Contributed</th>
+                                    <th class="sortable" data-sort="gain">Gain/Loss</th>
+                                    <th class="sortable" data-sort="expectedGrowthRate">Growth Rate</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="assetsTableBody">
+                                <!-- Assets will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contributions Tab -->
+        <div id="contributions" class="tab-content">
+            <div class="section-header">
+                <h2>Contribution Tracking</h2>
+                <button class="btn btn--primary" id="addContributionBtn">Add Contribution</button>
+            </div>
+            <div class="contributions-grid">
+                <div class="card">
+                    <div class="card__body">
+                        <h3>Contribution History</h3>
+                        <div class="chart-container" style="position: relative; height: 300px;">
+                            <canvas id="contributionsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card__body">
+                        <h3>Recent Contributions</h3>
+                        <div class="contributions-list" id="contributionsList">
+                            <!-- Contributions will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Projections Tab -->
+        <div id="projections" class="tab-content">
+            <div class="section-header">
+                <h2>Growth Projections</h2>
+                <div class="projection-controls">
+                    <label>
+                        Time Period:
+                        <select class="form-control" id="projectionPeriod">
+                            <option value="1">1 Year</option>
+                            <option value="2">2 Years</option>
+                            <option value="3">3 Years</option>
+                            <option value="5" selected>5 Years</option>
+                            <option value="10">10 Years</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+            <div class="projections-grid">
+                <div class="card">
+                    <div class="card__body">
+                        <h3>Portfolio Growth Projection</h3>
+                        <div class="chart-container" style="position: relative; height: 300px;">
+                            <canvas id="projectionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card__body">
+                        <h3>Asset Projections</h3>
+                        <div class="asset-projections" id="assetProjections">
+                            <!-- Asset projections will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reports Tab -->
+        <div id="reports" class="tab-content">
+            <div class="section-header">
+                <h2>Reports & Analysis</h2>
+                <div class="report-controls">
+                    <select class="form-control" id="reportType">
+                        <option value="overview">Portfolio Overview</option>
+                        <option value="performance">Performance Analysis</option>
+                        <option value="allocation">Asset Allocation</option>
+                    </select>
+                    <button class="btn btn--secondary" id="exportBtn">Export CSV</button>
+                </div>
+            </div>
+            <div class="reports-grid">
+                <div class="card">
+                    <div class="card__body">
+                        <h3>Asset Type Breakdown</h3>
+                        <div class="chart-container" style="position: relative; height: 300px;">
+                            <canvas id="typeBreakdownChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card__body">
+                        <h3>Performance Summary</h3>
+                        <div id="performanceSummary">
+                            <!-- Performance summary will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Asset Modal -->
+    <div id="assetModal" class="modal hidden">
+        <div class="modal-overlay">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="assetModalTitle">Add Asset</h3>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <form id="assetForm">
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">Symbol *</label>
+                            <input type="text" class="form-control" name="symbol" required placeholder="e.g., AAPL, MSFT, bitcoin">
+                            <small class="form-help">Enter stock ticker (e.g., AAPL, NOVO-B.CO) or crypto name (e.g., bitcoin, ethereum)</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Type *</label>
+                            <select class="form-control" name="type" required>
+                                <option value="">Select Type</option>
+                                <option value="Stock">Stock</option>
+                                <option value="ETF">ETF</option>
+                                <option value="Crypto">Crypto</option>
+                                <option value="Bond">Bond</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Asset Name *</label>
+                            <input type="text" class="form-control" name="name" required placeholder="Will be auto-filled">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Current Price *</label>
+                            <input type="number" class="form-control" name="currentPrice" step="0.01" min="0" required placeholder="Will be auto-filled">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Shares/Quantity *</label>
+                            <input type="number" class="form-control" name="shares" step="0.01" min="0" required placeholder="Number of shares owned">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Total Cost Basis *</label>
+                            <input type="number" class="form-control" name="totalContributed" step="0.01" min="0" required placeholder="Total amount invested">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Expected Annual Growth Rate (%)</label>
+                            <input type="number" class="form-control" name="expectedGrowthRate" step="0.1" min="0" max="100" value="7.0">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn--secondary modal-close">Cancel</button>
+                        <button type="submit" class="btn btn--primary">Save Asset</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contribution Modal -->
+    <div id="contributionModal" class="modal hidden">
+        <div class="modal-overlay">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Add Contribution</h3>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <form id="contributionForm">
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label">Asset *</label>
+                            <select class="form-control" name="assetId" required id="contributionAssetSelect">
+                                <option value="">Select Asset</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Date *</label>
+                            <input type="date" class="form-control" name="date" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Amount *</label>
+                            <input type="number" class="form-control" name="amount" step="0.01" min="0" required placeholder="Additional investment amount">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn--secondary modal-close">Cancel</button>
+                        <button type="submit" class="btn btn--primary">Add Contribution</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notifications Container -->
+    <div id="notifications" class="notifications-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
