@@ -109,59 +109,10 @@ class PortfolioDashboard {
     }
 
     loadSampleData() {
-        // Load with some sample data with realistic prices
-        this.assets = [
-            {
-                id: 1,
-                name: "Apple Inc.",
-                symbol: "AAPL",
-                type: "Stock",
-                currency: "USD",
-                currentPrice: 175.50,
-                shares: 10,
-                currentValue: 1755.00,
-                totalContributed: 1500.00,
-                expectedGrowthRate: 8.0,
-                dateAdded: "2024-01-15",
-                lastUpdated: new Date().toISOString()
-            },
-            {
-                id: 2,
-                name: "Novo Nordisk A/S",
-                symbol: "NOVO-B.CO",
-                type: "Stock",
-                currency: "DKK",
-                currentPrice: 892.40,
-                shares: 50,
-                currentValue: 44620.00,
-                totalContributed: 41000.00,
-                expectedGrowthRate: 7.0,
-                dateAdded: "2024-02-10",
-                lastUpdated: new Date().toISOString()
-            },
-            {
-                id: 3,
-                name: "Vanguard S&P 500 UCITS ETF",
-                symbol: "VUSA.L",
-                type: "ETF",
-                currency: "GBP",
-                currentPrice: 85.24,
-                shares: 25,
-                currentValue: 2131.00,
-                totalContributed: 2000.00,
-                expectedGrowthRate: 6.5,
-                dateAdded: "2024-03-01",
-                lastUpdated: new Date().toISOString()
-            }
-        ];
-
-        this.contributions = [
-            {assetId: 1, date: "2024-01-15", amount: 1500.00},
-            {assetId: 2, date: "2024-02-10", amount: 41000.00},
-            {assetId: 3, date: "2024-03-01", amount: 2000.00}
-        ];
-
-        this.nextAssetId = 4;
+        // Start with empty portfolio - no hardcoded assets
+        this.assets = [];
+        this.contributions = [];
+        this.nextAssetId = 1;
     }
 
     async loadCryptoList() {
