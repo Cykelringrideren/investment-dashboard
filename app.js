@@ -12,6 +12,16 @@ class PortfolioDashboard {
         this.cacheTimeout = 15 * 60 * 1000; // 15 minutes
         this.cryptoList = null;
         this.isLoading = false;
+        
+        // Basic exchange rates (simplified for demo - in production would fetch from API)
+        this.fxRates = {
+            'USD': 1.0,      // Base currency
+            'EUR': 0.85,     // 1 USD = 0.85 EUR
+            'GBP': 0.75,     // 1 USD = 0.75 GBP
+            'DKK': 6.85,     // 1 USD = 6.85 DKK
+            'SEK': 10.50,    // 1 USD = 10.50 SEK
+            'NOK': 10.75     // 1 USD = 10.75 NOK
+        };
 
 		// API endpoints - using proxy-free alternatives
 		this.apis = {
@@ -452,6 +462,11 @@ class PortfolioDashboard {
         // Export
         document.getElementById('exportBtn').addEventListener('click', () => this.exportData());
 
+        // Display currency change
+        document.getElementById('displayCurrency').addEventListener('change', () => {
+            this.refreshAllData();
+        });
+
         // Modal management
         document.querySelectorAll('.modal-close, .btn-cancel').forEach(btn => {
             btn.addEventListener('click', (e) => this.closeModal(e.target.closest('.modal')));
@@ -478,10 +493,13 @@ class PortfolioDashboard {
             header.addEventListener('click', (e) => this.handleSort(e.target.dataset.sort));
         });
 
-        // Symbol validation + suggestions
+        // Symbol validation + suggestions + real-time calculation
         setTimeout(() => {
             const symbolInput = document.querySelector('input[name="symbol"]');
             const typeSelect = document.querySelector('select[name="type"]');
+            const priceInput = document.querySelector('input[name="currentPrice"]');
+            const sharesInput = document.querySelector('input[name="shares"]');
+            
             if (symbolInput && typeSelect) {
                 symbolInput.addEventListener('blur', () => this.validateSymbol());
                 typeSelect.addEventListener('change', () => this.validateSymbol());
@@ -492,6 +510,50 @@ class PortfolioDashboard {
                     const q = e.target.value.trim();
                     suggestTimer = setTimeout(() => this.fetchSymbolSuggestions(q), 250);
                 });
+
+                // Currency change should trigger validation
+                const currencySelect = document.getElementById('assetCurrency');
+                if (currencySelect) {
+                    currencySelect.addEventListener('change', () => {
+                        this.validateSymbol();
+                    });
+                }
+            }
+
+            // Real-time current value calculation
+            if (priceInput && sharesInput) {
+                const calculateCurrentValue = () => {
+                    const price = parseFloat(priceInput.value) || 0;
+                    const shares = parseFloat(sharesInput.value) || 0;
+                    const currentValue = price * shares;
+                    
+                    // Show calculated value as visual feedback
+                    let valueDisplay = document.getElementById('calculatedValue');
+                    if (!valueDisplay) {
+                        valueDisplay = document.createElement('div');
+                        valueDisplay.id = 'calculatedValue';
+                        valueDisplay.className = 'form-help';
+                        valueDisplay.style.marginTop = '8px';
+                        valueDisplay.style.fontWeight = '500';
+                        valueDisplay.style.color = 'var(--color-primary)';
+                        sharesInput.parentNode.appendChild(valueDisplay);
+                    }
+                    
+                    const currencySelect = document.getElementById('assetCurrency');
+                    const currency = currencySelect ? currencySelect.value : 'USD';
+                    valueDisplay.textContent = currentValue > 0 ? 
+                        `Current Value: ${this.formatCurrency(currentValue, currency)}` : 
+                        'Current Value: -';
+                };
+
+                priceInput.addEventListener('input', calculateCurrentValue);
+                sharesInput.addEventListener('input', calculateCurrentValue);
+                
+                // Also calculate when currency changes
+                const currencySelect = document.getElementById('assetCurrency');
+                if (currencySelect) {
+                    currencySelect.addEventListener('change', calculateCurrentValue);
+                }
             }
         }, 100);
     }
@@ -790,6 +852,10 @@ class PortfolioDashboard {
         const validationMsg = document.getElementById('symbolValidation');
         if (validationMsg) validationMsg.remove();
         
+        // Clear calculated value display
+        const calculatedValue = document.getElementById('calculatedValue');
+        if (calculatedValue) calculatedValue.remove();
+        
         if (asset) {
             form.name.value = asset.name;
             form.symbol.value = asset.symbol;
@@ -800,11 +866,29 @@ class PortfolioDashboard {
             form.expectedGrowthRate.value = asset.expectedGrowthRate;
             const currencySelect = document.getElementById('assetCurrency');
             if (currencySelect && asset.currency) currencySelect.value = asset.currency;
+            
+            // Trigger calculation display for existing asset
+            setTimeout(() => {
+                const calculateEvent = new Event('input');
+                const priceInput = form.querySelector('input[name="currentPrice"]');
+                const sharesInput = form.querySelector('input[name="shares"]');
+                if (priceInput) priceInput.dispatchEvent(calculateEvent);
+                if (sharesInput) sharesInput.dispatchEvent(calculateEvent);
+            }, 50);
         } else {
             form.reset();
             form.expectedGrowthRate.value = 7.0;
             const currencySelect = document.getElementById('assetCurrency');
             if (currencySelect) currencySelect.value = this.getDisplayCurrency();
+            
+            // Trigger calculation display after reset
+            setTimeout(() => {
+                const calculateEvent = new Event('input');
+                const priceInput = form.querySelector('input[name="currentPrice"]');
+                const sharesInput = form.querySelector('input[name="shares"]');
+                if (priceInput) priceInput.dispatchEvent(calculateEvent);
+                if (sharesInput) sharesInput.dispatchEvent(calculateEvent);
+            }, 50);
         }
 
         modal.classList.remove('hidden');
@@ -825,14 +909,34 @@ class PortfolioDashboard {
             return;
         }
 
+        // Validate numeric fields
+        const shares = parseFloat(formData.get('shares'));
+        const totalContributed = parseFloat(formData.get('totalContributed'));
+        const currentPrice = parseFloat(formData.get('currentPrice')) || 0;
+
+        if (isNaN(shares) || shares <= 0) {
+            this.showNotification('Shares/Quantity must be a positive number', 'error');
+            return;
+        }
+
+        if (isNaN(totalContributed) || totalContributed <= 0) {
+            this.showNotification('Total Cost Basis must be a positive number', 'error');
+            return;
+        }
+
+        if (currentPrice < 0) {
+            this.showNotification('Current Price cannot be negative', 'error');
+            return;
+        }
+
         const currencySelect = document.getElementById('assetCurrency');
         const assetData = {
             name: formData.get('name'),
             symbol: symbol,
             type: type,
-            currentPrice: parseFloat(formData.get('currentPrice')) || 0,
-            shares: parseFloat(formData.get('shares')),
-            totalContributed: parseFloat(formData.get('totalContributed')),
+            currentPrice: currentPrice,
+            shares: shares,
+            totalContributed: totalContributed,
             expectedGrowthRate: parseFloat(formData.get('expectedGrowthRate')) || 7.0,
             dateAdded: this.editingAsset ? this.editingAsset.dateAdded : new Date().toISOString().split('T')[0],
             lastUpdated: new Date().toISOString(),
@@ -845,7 +949,7 @@ class PortfolioDashboard {
             assetData.currency = guessed.currency;
             if (currencySelect) currencySelect.value = guessed.currency;
         }
-        assetData.currentValue = assetData.currentPrice * assetData.shares;
+        assetData.currentValue = currentPrice * shares;
 
         if (this.editingAsset) {
             const index = this.assets.findIndex(a => a.id === this.editingAsset.id);
