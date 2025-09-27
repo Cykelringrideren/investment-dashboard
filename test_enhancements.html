@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Dashboard - Enhancement Tests</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .test-pass {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .test-fail {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .test-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .code {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 10px 0;
+            border: 1px solid #e9ecef;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Portfolio Dashboard - Enhancement Tests</h1>
+    <p>This page tests all the implemented enhancements to verify they're working correctly.</p>
+
+    <div class="test-container">
+        <h2>🔧 Core Enhancement Tests</h2>
+        <div id="coreTestResults"></div>
+        <button onclick="runCoreTests()">Run Core Tests</button>
+    </div>
+
+    <div class="test-container">
+        <h2>🌐 API Integration Tests</h2>
+        <div id="apiTestResults"></div>
+        <button onclick="runApiTests()">Test API Enhancements</button>
+        <button onclick="testBackendConnection()">Test Backend Connection</button>
+    </div>
+
+    <div class="test-container">
+        <h2>💾 Cache & Storage Tests</h2>
+        <div id="cacheTestResults"></div>
+        <button onclick="runCacheTests()">Test Cache Enhancements</button>
+        <button onclick="testLocalStorage()">Test localStorage</button>
+    </div>
+
+    <div class="test-container">
+        <h2>🔒 Security Tests</h2>
+        <div id="securityTestResults"></div>
+        <button onclick="runSecurityTests()">Test Security Features</button>
+    </div>
+
+    <div class="test-container">
+        <h2>⚡ Performance Tests</h2>
+        <div id="performanceTestResults"></div>
+        <button onclick="runPerformanceTests()">Test Performance Features</button>
+    </div>
+
+    <script>
+        // Import the main app for testing
+        let testApp;
+
+        function addTestResult(containerId, message, status) {
+            const container = document.getElementById(containerId);
+            const result = document.createElement('div');
+            result.className = `test-result test-${status}`;
+            result.innerHTML = message;
+            container.appendChild(result);
+        }
+
+        function clearTestResults(containerId) {
+            document.getElementById(containerId).innerHTML = '';
+        }
+
+        async function initializeTestApp() {
+            if (!testApp) {
+                // Create a test instance of the portfolio dashboard
+                const script = document.createElement('script');
+                script.src = 'app.js';
+                document.head.appendChild(script);
+                
+                await new Promise(resolve => {
+                    script.onload = () => {
+                        // Wait for DOM ready event
+                        setTimeout(() => {
+                            testApp = new PortfolioDashboard();
+                            resolve();
+                        }, 100);
+                    };
+                });
+            }
+            return testApp;
+        }
+
+        async function runCoreTests() {
+            clearTestResults('coreTestResults');
+            addTestResult('coreTestResults', '🔄 Running core enhancement tests...', 'info');
+
+            try {
+                const app = await initializeTestApp();
+
+                // Test 1: Input Validation
+                try {
+                    app.validateSymbol('AAPL');
+                    addTestResult('coreTestResults', '✅ Symbol validation: Normal symbol passes', 'pass');
+                } catch (e) {
+                    addTestResult('coreTestResults', '❌ Symbol validation: Normal symbol failed', 'fail');
+                }
+
+                try {
+                    app.validateSymbol('INVALID<script>alert("xss")</script>');
+                    addTestResult('coreTestResults', '❌ Security validation: XSS attempt should fail', 'fail');
+                } catch (e) {
+                    addTestResult('coreTestResults', '✅ Security validation: XSS attempt blocked', 'pass');
+                }
+
+                // Test 2: Rate Limiting Setup
+                if (app.requestQueue && app.requestQueue instanceof Map) {
+                    addTestResult('coreTestResults', '✅ Rate limiting: Queue initialized', 'pass');
+                } else {
+                    addTestResult('coreTestResults', '❌ Rate limiting: Queue not initialized', 'fail');
+                }
+
+                // Test 3: Circuit Breaker Setup
+                if (app.circuitBreakers && app.circuitBreakers instanceof Map) {
+                    addTestResult('coreTestResults', '✅ Circuit breakers: Initialized', 'pass');
+                } else {
+                    addTestResult('coreTestResults', '❌ Circuit breakers: Not initialized', 'fail');
+                }
+
+                // Test 4: Cache Management
+                if (app.maxCacheSize && app.maxCacheSize > 0) {
+                    addTestResult('coreTestResults', '✅ Cache management: Size limits configured', 'pass');
+                } else {
+                    addTestResult('coreTestResults', '❌ Cache management: Size limits not configured', 'fail');
+                }
+
+                addTestResult('coreTestResults', '🎉 Core tests completed', 'info');
+
+            } catch (error) {
+                addTestResult('coreTestResults', `❌ Core test error: ${error.message}`, 'fail');
+            }
+        }
+
+        async function runApiTests() {
+            clearTestResults('apiTestResults');
+            addTestResult('apiTestResults', '🔄 Testing API enhancements...', 'info');
+
+            try {
+                const app = await initializeTestApp();
+
+                // Test 1: Retry Logic
+                if (typeof app.fetchWithRetry === 'function') {
+                    addTestResult('apiTestResults', '✅ Retry logic: Method available', 'pass');
+                } else {
+                    addTestResult('apiTestResults', '❌ Retry logic: Method not found', 'fail');
+                }
+
+                // Test 2: API Key Management
+                if (app.apis.apiKeys && typeof app.setApiKey === 'function') {
+                    addTestResult('apiTestResults', '✅ API key management: Available', 'pass');
+                } else {
+                    addTestResult('apiTestResults', '❌ API key management: Not available', 'fail');
+                }
+
+                // Test 3: Backend Detection
+                const backendStatus = await app.detectBackend();
+                if (backendStatus) {
+                    addTestResult('apiTestResults', '✅ Backend detection: Backend available', 'pass');
+                } else {
+                    addTestResult('apiTestResults', '⚠️ Backend detection: No backend (expected for frontend-only)', 'info');
+                }
+
+                // Test 4: Enhanced Error Handling
+                if (typeof app.recordApiFailure === 'function' && typeof app.isCircuitBreakerOpen === 'function') {
+                    addTestResult('apiTestResults', '✅ Enhanced error handling: Available', 'pass');
+                } else {
+                    addTestResult('apiTestResults', '❌ Enhanced error handling: Not available', 'fail');
+                }
+
+                addTestResult('apiTestResults', '🎉 API tests completed', 'info');
+
+            } catch (error) {
+                addTestResult('apiTestResults', `❌ API test error: ${error.message}`, 'fail');
+            }
+        }
+
+        async function runCacheTests() {
+            clearTestResults('cacheTestResults');
+            addTestResult('cacheTestResults', '🔄 Testing cache enhancements...', 'info');
+
+            try {
+                const app = await initializeTestApp();
+
+                // Test 1: localStorage Persistence
+                if (typeof app.saveCacheToStorage === 'function' && typeof app.loadCacheFromStorage === 'function') {
+                    addTestResult('cacheTestResults', '✅ localStorage persistence: Methods available', 'pass');
+                } else {
+                    addTestResult('cacheTestResults', '❌ localStorage persistence: Methods missing', 'fail');
+                }
+
+                // Test 2: Cache Size Management
+                if (typeof app.manageCacheSize === 'function') {
+                    addTestResult('cacheTestResults', '✅ Cache size management: Available', 'pass');
+                } else {
+                    addTestResult('cacheTestResults', '❌ Cache size management: Not available', 'fail');
+                }
+
+                // Test 3: Cache Statistics
+                if (typeof app.showCacheStats === 'function') {
+                    addTestResult('cacheTestResults', '✅ Cache statistics: Available', 'pass');
+                } else {
+                    addTestResult('cacheTestResults', '❌ Cache statistics: Not available', 'fail');
+                }
+
+                addTestResult('cacheTestResults', '🎉 Cache tests completed', 'info');
+
+            } catch (error) {
+                addTestResult('cacheTestResults', `❌ Cache test error: ${error.message}`, 'fail');
+            }
+        }
+
+        async function runSecurityTests() {
+            clearTestResults('securityTestResults');
+            addTestResult('securityTestResults', '🔄 Testing security features...', 'info');
+
+            try {
+                const app = await initializeTestApp();
+
+                // Test 1: Input Sanitization
+                const testInputs = [
+                    { input: 'AAPL', expected: 'AAPL', description: 'Normal symbol' },
+                    { input: 'aapl', expected: 'AAPL', description: 'Lowercase conversion' },
+                    { input: 'NOVO-B.CO', expected: 'NOVO-B.CO', description: 'International symbol' },
+                    { input: 'AAPL<script>', expected: null, description: 'Script tag injection' },
+                    { input: '', expected: null, description: 'Empty symbol' },
+                    { input: 'A'.repeat(25), expected: null, description: 'Too long symbol' }
+                ];
+
+                let securityTestsPassed = 0;
+                for (const test of testInputs) {
+                    try {
+                        const result = app.validateSymbol(test.input);
+                        if (test.expected && result === test.expected) {
+                            addTestResult('securityTestResults', `✅ ${test.description}: Passed`, 'pass');
+                            securityTestsPassed++;
+                        } else if (!test.expected) {
+                            addTestResult('securityTestResults', `❌ ${test.description}: Should have failed`, 'fail');
+                        }
+                    } catch (error) {
+                        if (!test.expected) {
+                            addTestResult('securityTestResults', `✅ ${test.description}: Correctly rejected`, 'pass');
+                            securityTestsPassed++;
+                        } else {
+                            addTestResult('securityTestResults', `❌ ${test.description}: Unexpected error`, 'fail');
+                        }
+                    }
+                }
+
+                addTestResult('securityTestResults', `📊 Security tests: ${securityTestsPassed}/${testInputs.length} passed`, 'info');
+
+            } catch (error) {
+                addTestResult('securityTestResults', `❌ Security test error: ${error.message}`, 'fail');
+            }
+        }
+
+        async function runPerformanceTests() {
+            clearTestResults('performanceTestResults');
+            addTestResult('performanceTestResults', '🔄 Testing performance features...', 'info');
+
+            try {
+                const app = await initializeTestApp();
+
+                // Test 1: Chart Update Debouncing
+                if (typeof app.debounceChartUpdate === 'function') {
+                    addTestResult('performanceTestResults', '✅ Chart debouncing: Available', 'pass');
+                } else {
+                    addTestResult('performanceTestResults', '❌ Chart debouncing: Not available', 'fail');
+                }
+
+                // Test 2: Batch Processing
+                if (typeof app.fetchMultipleQuotesViaBackend === 'function') {
+                    addTestResult('performanceTestResults', '✅ Batch processing: Available', 'pass');
+                } else {
+                    addTestResult('performanceTestResults', '❌ Batch processing: Not available', 'fail');
+                }
+
+                // Test 3: Cache Efficiency
+                const initialCacheSize = app.priceCache.size;
+                app.setCachedPrice('test:AAPL', { price: 150, name: 'Apple Inc.', currency: 'USD' });
+                const newCacheSize = app.priceCache.size;
+                
+                if (newCacheSize > initialCacheSize) {
+                    addTestResult('performanceTestResults', '✅ Cache efficiency: Working correctly', 'pass');
+                } else {
+                    addTestResult('performanceTestResults', '❌ Cache efficiency: Cache not updating', 'fail');
+                }
+
+                addTestResult('performanceTestResults', '🎉 Performance tests completed', 'info');
+
+            } catch (error) {
+                addTestResult('performanceTestResults', `❌ Performance test error: ${error.message}`, 'fail');
+            }
+        }
+
+        async function testBackendConnection() {
+            clearTestResults('apiTestResults');
+            addTestResult('apiTestResults', '🔄 Testing backend connection...', 'info');
+
+            try {
+                const response = await fetch('http://localhost:5000/api/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    addTestResult('apiTestResults', '✅ Backend connection: Successful', 'pass');
+                    addTestResult('apiTestResults', `📊 Backend status: ${data.status}`, 'info');
+                    addTestResult('apiTestResults', `💾 Backend cache: ${data.cache_size} entries`, 'info');
+                } else {
+                    addTestResult('apiTestResults', `❌ Backend connection: HTTP ${response.status}`, 'fail');
+                }
+            } catch (error) {
+                addTestResult('apiTestResults', '⚠️ Backend connection: Not available (expected if not running)', 'info');
+                addTestResult('apiTestResults', 'To test backend: cd backend && python start.py', 'info');
+            }
+        }
+
+        async function testLocalStorage() {
+            clearTestResults('cacheTestResults');
+            addTestResult('cacheTestResults', '🔄 Testing localStorage functionality...', 'info');
+
+            try {
+                // Test localStorage availability
+                if (typeof Storage !== 'undefined') {
+                    addTestResult('cacheTestResults', '✅ localStorage: Available', 'pass');
+                } else {
+                    addTestResult('cacheTestResults', '❌ localStorage: Not available', 'fail');
+                    return;
+                }
+
+                // Test setting and getting data
+                const testKey = 'portfolio_test_key';
+                const testData = { test: 'data', timestamp: Date.now() };
+                
+                localStorage.setItem(testKey, JSON.stringify(testData));
+                const retrieved = JSON.parse(localStorage.getItem(testKey));
+                
+                if (retrieved && retrieved.test === 'data') {
+                    addTestResult('cacheTestResults', '✅ localStorage: Read/write working', 'pass');
+                } else {
+                    addTestResult('cacheTestResults', '❌ localStorage: Read/write failed', 'fail');
+                }
+
+                // Cleanup
+                localStorage.removeItem(testKey);
+                addTestResult('cacheTestResults', '✅ localStorage: Cleanup successful', 'pass');
+
+            } catch (error) {
+                addTestResult('cacheTestResults', `❌ localStorage test error: ${error.message}`, 'fail');
+            }
+        }
+
+        // Auto-run basic tests on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            addTestResult('coreTestResults', '🔄 Auto-running basic tests...', 'info');
+            
+            // Test if main app.js loads
+            try {
+                await initializeTestApp();
+                addTestResult('coreTestResults', '✅ app.js loaded successfully', 'pass');
+            } catch (error) {
+                addTestResult('coreTestResults', `❌ app.js failed to load: ${error.message}`, 'fail');
+            }
+        });
+    </script>
+</body>
+</html>

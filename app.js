@@ -24,9 +24,27 @@ class PortfolioDashboard {
         this.isLoading = false;
         this.fxRates = { USD: 1 }; // Initialize with USD as base
         this.fxCacheTimeout = 60 * 60 * 1000; // 1 hour for FX rates
+        
+        // Enhanced features
+        this.requestQueue = new Map(); // Rate limiting
+        this.circuitBreakers = new Map(); // Circuit breaker states
+        this.apiStats = new Map(); // API performance tracking
+        this.requestTimeout = 10000; // 10 second timeout
+        this.maxCacheSize = 1000; // Maximum cache entries
+        this.chartUpdateDebounce = null; // Chart optimization
+        
+        // Backend integration
+        this.backendEnabled = this.detectBackend();
+        this.backendUrl = 'http://localhost:5000/api';
 
 		// API endpoints - using multiple alternatives for reliability
 		this.apis = {
+			// API Keys (loaded from localStorage or environment)
+			apiKeys: {
+				fmp: localStorage.getItem('fmp_api_key') || null,
+				twelvedata: localStorage.getItem('twelvedata_api_key') || null,
+				iex: localStorage.getItem('iex_api_key') || null
+			},
 			// Stock APIs - Multiple fallbacks due to CORS restrictions
 			stockApis: [
 				// Financial Modeling Prep (free tier available)
@@ -34,21 +52,24 @@ class PortfolioDashboard {
 					name: 'fmp',
 					quote: 'https://financialmodelingprep.com/api/v3/quote/',
 					search: 'https://financialmodelingprep.com/api/v3/search?query=',
-					needsApiKey: false // Some endpoints work without API key
+					needsApiKey: false, // Some endpoints work without API key
+					keyParam: 'apikey'
 				},
 				// Twelve Data (free tier)
 				{
 					name: 'twelvedata',
 					quote: 'https://api.twelvedata.com/quote?symbol=',
 					search: 'https://api.twelvedata.com/symbol_search?symbol=',
-					needsApiKey: false
+					needsApiKey: false,
+					keyParam: 'apikey'
 				},
 				// IEX Cloud alternative endpoint
 				{
 					name: 'iex',
 					quote: 'https://cloud.iexapis.com/stable/stock/',
 					search: 'https://cloud.iexapis.com/stable/search/',
-					needsApiKey: true
+					needsApiKey: true,
+					keyParam: 'token'
 				}
 			],
 			// Yahoo Finance endpoints (kept as fallback)
@@ -144,6 +165,358 @@ class PortfolioDashboard {
         this.init();
     }
 
+    // Enhanced utility methods for improved functionality
+    
+    validateSymbol(symbol) {
+        if (!symbol || typeof symbol !== 'string') {
+            throw new Error('Invalid symbol format');
+        }
+        
+        // Sanitize input - allow only alphanumeric, dots, and hyphens
+        const sanitized = symbol.replace(/[^A-Z0-9.-]/gi, '').toUpperCase();
+        
+        if (sanitized.length === 0) {
+            throw new Error('Symbol cannot be empty');
+        }
+        
+        if (sanitized.length > 20) {
+            throw new Error('Symbol too long (max 20 characters)');
+        }
+        
+        // Check for common injection patterns
+        const dangerousPatterns = ['SCRIPT', 'JAVASCRIPT', 'VBSCRIPT', 'ONLOAD', 'ONERROR'];
+        if (dangerousPatterns.some(pattern => sanitized.includes(pattern))) {
+            throw new Error('Invalid symbol format');
+        }
+        
+        return sanitized;
+    }
+
+    async fetchWithRetry(url, options = {}, maxRetries = 3, timeout = this.requestTimeout) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        
+        const requestOptions = {
+            ...options,
+            signal: controller.signal
+        };
+        
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                const response = await fetch(url, requestOptions);
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                    this.updateApiStats(url, 'success', attempt + 1);
+                    return response;
+                }
+                
+                if (response.status === 429) {
+                    // Rate limited - wait longer
+                    const delay = Math.pow(2, attempt) * 2000;
+                    await this.delay(delay);
+                    continue;
+                }
+                
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                
+            } catch (error) {
+                clearTimeout(timeoutId);
+                
+                if (error.name === 'AbortError') {
+                    throw new Error(`Request timeout after ${timeout}ms`);
+                }
+                
+                if (attempt === maxRetries - 1) {
+                    this.updateApiStats(url, 'failure', attempt + 1);
+                    throw error;
+                }
+                
+                // Exponential backoff
+                const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+                await this.delay(delay);
+            }
+        }
+    }
+
+    async delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    updateApiStats(url, result, attempts) {
+        const domain = new URL(url).hostname;
+        const stats = this.apiStats.get(domain) || { success: 0, failure: 0, totalAttempts: 0 };
+        
+        stats[result]++;
+        stats.totalAttempts += attempts;
+        stats.lastUsed = Date.now();
+        
+        this.apiStats.set(domain, stats);
+    }
+
+    isCircuitBreakerOpen(apiName) {
+        const breaker = this.circuitBreakers.get(apiName);
+        if (!breaker) return false;
+        
+        const now = Date.now();
+        
+        // Reset circuit breaker after timeout
+        if (now - breaker.lastFailure > breaker.timeout) {
+            this.circuitBreakers.delete(apiName);
+            return false;
+        }
+        
+        return breaker.failureCount >= breaker.threshold;
+    }
+
+    recordApiFailure(apiName) {
+        const breaker = this.circuitBreakers.get(apiName) || {
+            failureCount: 0,
+            threshold: 5, // Open after 5 failures
+            timeout: 60000, // 1 minute timeout
+            lastFailure: null
+        };
+        
+        breaker.failureCount++;
+        breaker.lastFailure = Date.now();
+        
+        this.circuitBreakers.set(apiName, breaker);
+        
+        if (breaker.failureCount >= breaker.threshold) {
+            console.warn(`Circuit breaker opened for ${apiName} - will retry after ${breaker.timeout}ms`);
+        }
+    }
+
+    resetApiFailures(apiName) {
+        this.circuitBreakers.delete(apiName);
+    }
+
+    async rateLimitedFetch(url, options = {}) {
+        const domain = new URL(url).hostname;
+        const lastRequest = this.requestQueue.get(domain);
+        const minInterval = 1000; // 1 second between requests to same domain
+        
+        if (lastRequest) {
+            const timeSinceLastRequest = Date.now() - lastRequest;
+            if (timeSinceLastRequest < minInterval) {
+                await this.delay(minInterval - timeSinceLastRequest);
+            }
+        }
+        
+        this.requestQueue.set(domain, Date.now());
+        return this.fetchWithRetry(url, options);
+    }
+
+    saveCacheToStorage() {
+        try {
+            // Convert Map to array for JSON serialization
+            const cacheArray = Array.from(this.priceCache.entries());
+            localStorage.setItem('portfolioCache', JSON.stringify(cacheArray));
+            localStorage.setItem('portfolioCacheTimestamp', Date.now().toString());
+        } catch (error) {
+            console.warn('Could not save cache to storage:', error.message);
+        }
+    }
+
+    loadCacheFromStorage() {
+        try {
+            const cached = localStorage.getItem('portfolioCache');
+            const timestamp = localStorage.getItem('portfolioCacheTimestamp');
+            
+            if (cached && timestamp) {
+                const cacheAge = Date.now() - parseInt(timestamp);
+                const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+                
+                if (cacheAge < maxAge) {
+                    const cacheArray = JSON.parse(cached);
+                    this.priceCache = new Map(cacheArray);
+                    console.log('Cache loaded from localStorage');
+                }
+            }
+        } catch (error) {
+            console.warn('Could not load cache from storage:', error.message);
+        }
+    }
+
+    loadSettingsFromStorage() {
+        try {
+            // Load cache duration
+            const cacheDuration = localStorage.getItem('cache_duration');
+            if (cacheDuration) {
+                this.cacheTimeout = parseInt(cacheDuration) * 60 * 1000;
+            }
+            
+            // Load request timeout
+            const requestTimeout = localStorage.getItem('request_timeout');
+            if (requestTimeout) {
+                this.requestTimeout = parseInt(requestTimeout) * 1000;
+            }
+            
+            // Load backend URL
+            const backendUrl = localStorage.getItem('backend_url');
+            if (backendUrl) {
+                this.backendUrl = backendUrl;
+            }
+            
+            console.log('Settings loaded from localStorage');
+        } catch (error) {
+            console.warn('Could not load settings from storage:', error.message);
+        }
+    }
+
+    manageCacheSize() {
+        if (this.priceCache.size > this.maxCacheSize) {
+            // Remove oldest entries (simple LRU)
+            const entries = Array.from(this.priceCache.entries());
+            entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+            
+            const entriesToRemove = entries.slice(0, Math.floor(this.maxCacheSize * 0.2));
+            entriesToRemove.forEach(([key]) => this.priceCache.delete(key));
+            
+            console.log(`Cache cleaned: removed ${entriesToRemove.length} old entries`);
+        }
+    }
+
+    debounceChartUpdate(updateFunction, delay = 250) {
+        clearTimeout(this.chartUpdateDebounce);
+        this.chartUpdateDebounce = setTimeout(() => {
+            updateFunction();
+        }, delay);
+    }
+
+    buildApiUrl(api, endpoint, symbol, isSearch = false) {
+        let baseUrl = isSearch ? api.search : api.quote;
+        let url = baseUrl + encodeURIComponent(symbol);
+        
+        // Add API key if available and needed
+        const apiKey = this.apis.apiKeys[api.name];
+        if (apiKey && api.keyParam) {
+            const separator = url.includes('?') ? '&' : '?';
+            url += `${separator}${api.keyParam}=${apiKey}`;
+        }
+        
+        return url;
+    }
+
+    setApiKey(provider, apiKey) {
+        if (!apiKey || typeof apiKey !== 'string') {
+            throw new Error('Invalid API key format');
+        }
+        
+        // Basic validation - API keys should be alphanumeric with some special chars
+        if (!/^[A-Za-z0-9_-]+$/.test(apiKey)) {
+            throw new Error('API key contains invalid characters');
+        }
+        
+        this.apis.apiKeys[provider] = apiKey;
+        localStorage.setItem(`${provider}_api_key`, apiKey);
+        
+        // Reset circuit breaker for this provider
+        this.resetApiFailures(provider);
+        
+        this.showNotification(`API key set for ${provider}`, 'success');
+    }
+
+    removeApiKey(provider) {
+        this.apis.apiKeys[provider] = null;
+        localStorage.removeItem(`${provider}_api_key`);
+        this.showNotification(`API key removed for ${provider}`, 'info');
+    }
+
+    async detectBackend() {
+        try {
+            const response = await fetch(`${this.backendUrl}/health`, { 
+                method: 'GET',
+                timeout: 3000
+            });
+            
+            if (response.ok) {
+                console.log('Backend API detected and available');
+                return true;
+            }
+        } catch (error) {
+            console.log('Backend API not available, using direct API calls');
+        }
+        return false;
+    }
+
+    async useBackendAPI(endpoint, options = {}) {
+        if (!this.backendEnabled) {
+            throw new Error('Backend API not available');
+        }
+
+        const url = `${this.backendUrl}${endpoint}`;
+        const response = await this.rateLimitedFetch(url, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            ...options
+        });
+
+        if (!response.ok) {
+            throw new Error(`Backend API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || 'Backend API returned error');
+        }
+
+        return data.data;
+    }
+
+    async fetchStockPriceViaBackend(symbol, { force = false } = {}) {
+        try {
+            const endpoint = `/quote/${encodeURIComponent(symbol)}?force=${force}`;
+            const data = await this.useBackendAPI(endpoint);
+            
+            return {
+                price: data.price,
+                name: data.name,
+                currency: data.currency || 'USD',
+                source: 'backend'
+            };
+        } catch (error) {
+            throw new Error(`Backend quote failed: ${error.message}`);
+        }
+    }
+
+    async fetchMultipleQuotesViaBackend(symbols, force = false) {
+        try {
+            const payload = {
+                symbols: symbols.map(s => ({
+                    symbol: typeof s === 'string' ? s : s.symbol,
+                    type: typeof s === 'object' ? s.type : 'stock'
+                })),
+                force
+            };
+
+            const response = await fetch(`${this.backendUrl}/quotes`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Backend batch quotes failed: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (!result.success) {
+                throw new Error(result.error || 'Backend batch quotes returned error');
+            }
+
+            return result.data;
+        } catch (error) {
+            throw new Error(`Backend batch quotes failed: ${error.message}`);
+        }
+    }
+
     trapFocus(modal) {
         const focusableSelectors = [
             'a[href]', 'area[href]', 'input:not([disabled])', 'select:not([disabled])',
@@ -175,6 +548,15 @@ class PortfolioDashboard {
     }
 
     async init() {
+        // Load cached data from localStorage first
+        this.loadCacheFromStorage();
+        
+        // Load settings from localStorage
+        this.loadSettingsFromStorage();
+        
+        // Detect backend availability
+        this.backendEnabled = await this.detectBackend();
+        
         this.setupEventListeners();
         await Promise.all([
             this.loadCryptoList(),
@@ -321,14 +703,23 @@ class PortfolioDashboard {
 			return { price: 0, name: 'Unknown', currency: 'USD' };
 		}
 
-		const cacheKey = `stock:${symbol.toUpperCase()}`;
+		// Validate and sanitize symbol
+		let sanitizedSymbol;
+		try {
+			sanitizedSymbol = this.validateSymbol(symbol);
+		} catch (error) {
+			console.warn('Symbol validation failed:', error.message);
+			return { price: 0, name: 'Invalid Symbol', currency: 'USD' };
+		}
+
+		const cacheKey = `stock:${sanitizedSymbol}`;
 		const cached = this.getCachedPrice(cacheKey);
 		if (cached && !force) {
 			return cached;
 		}
 
 		// Check demo data first (both demo mode and fallback)
-		const demoData = this.demoPrices[symbol.toUpperCase()];
+		const demoData = this.demoPrices[sanitizedSymbol];
 		
 		// In demo mode, use predefined prices if available
 		if (this.apis.demoMode && demoData) {
@@ -341,16 +732,28 @@ class PortfolioDashboard {
 			return payload;
 		}
 
-		// Try alternative stock APIs first
+		// Try backend API first if available
+		if (this.backendEnabled) {
+			try {
+				const result = await this.fetchStockPriceViaBackend(sanitizedSymbol, { force });
+				this.setCachedPrice(cacheKey, result);
+				return result;
+			} catch (error) {
+				console.log(`Backend API failed for ${sanitizedSymbol}:`, error.message);
+				// Continue to alternative APIs
+			}
+		}
+
+		// Try alternative stock APIs
 		for (const api of this.apis.stockApis) {
 			try {
-				const result = await this.tryStockAPI(api, symbol);
+				const result = await this.tryStockAPI(api, sanitizedSymbol);
 				if (result) {
 					this.setCachedPrice(cacheKey, result);
 					return result;
 				}
 			} catch (error) {
-				console.log(`${api.name} API failed for ${symbol}:`, error.message);
+				console.log(`${api.name} API failed for ${sanitizedSymbol}:`, error.message);
 				continue;
 			}
 		}
@@ -411,33 +814,41 @@ class PortfolioDashboard {
 	}
 
 	async tryStockAPI(api, symbol) {
+		// Check circuit breaker
+		if (this.isCircuitBreakerOpen(api.name)) {
+			throw new Error(`${api.name} API circuit breaker is open`);
+		}
+
 		let url;
 		let response;
 		
-		switch (api.name) {
-			case 'fmp':
-				// Financial Modeling Prep
-				url = `${api.quote}${encodeURIComponent(symbol)}`;
-				response = await fetch(url);
-				if (response.ok) {
-					const data = await response.json();
-					if (data && data.length > 0 && data[0].price) {
-						return {
-							price: data[0].price,
-							name: data[0].name || symbol,
-							currency: 'USD' // FMP typically returns USD
-						};
+		try {
+			switch (api.name) {
+				case 'fmp':
+					// Financial Modeling Prep
+					url = this.buildApiUrl(api, 'quote', symbol);
+					response = await this.rateLimitedFetch(url);
+					if (response.ok) {
+						const data = await response.json();
+						if (data && data.length > 0 && data[0].price) {
+							this.resetApiFailures(api.name);
+							return {
+								price: data[0].price,
+								name: data[0].name || symbol,
+								currency: 'USD' // FMP typically returns USD
+							};
+						}
 					}
-				}
-				break;
+					break;
 				
 			case 'twelvedata':
 				// Twelve Data
-				url = `${api.quote}${encodeURIComponent(symbol)}`;
-				response = await fetch(url);
+				url = this.buildApiUrl(api, 'quote', symbol);
+				response = await this.rateLimitedFetch(url);
 				if (response.ok) {
 					const data = await response.json();
 					if (data && data.price && !data.code) { // Check for error code
+						this.resetApiFailures(api.name);
 						return {
 							price: parseFloat(data.price),
 							name: data.name || symbol,
@@ -449,14 +860,15 @@ class PortfolioDashboard {
 				
 			case 'iex':
 				// IEX Cloud (requires API key, skip if not available)
-				if (api.needsApiKey) {
-					return null;
+				if (api.needsApiKey && !this.apis.apiKeys[api.name]) {
+					throw new Error('IEX Cloud requires API key');
 				}
-				url = `${api.quote}${encodeURIComponent(symbol)}/quote`;
-				response = await fetch(url);
+				url = this.buildApiUrl(api, 'quote', symbol) + '/quote';
+				response = await this.rateLimitedFetch(url);
 				if (response.ok) {
 					const data = await response.json();
 					if (data && data.latestPrice) {
+						this.resetApiFailures(api.name);
 						return {
 							price: data.latestPrice,
 							name: data.companyName || symbol,
@@ -465,6 +877,10 @@ class PortfolioDashboard {
 					}
 				}
 				break;
+			}
+		} catch (error) {
+			this.recordApiFailure(api.name);
+			throw new Error(`${api.name} API error: ${error.message}`);
 		}
 		
 		return null;
@@ -574,6 +990,8 @@ class PortfolioDashboard {
 
 	setCachedPrice(cacheKey, data) {
 		this.priceCache.set(cacheKey, { timestamp: Date.now(), data });
+		this.manageCacheSize();
+		this.saveCacheToStorage();
 	}
 
     getCryptoId(symbol) {
@@ -649,18 +1067,51 @@ class PortfolioDashboard {
 	async refreshAllPrices() {
 		this.setLoading(true);
 		try {
-			const results = await Promise.all(this.assets.map(asset => this.refreshAssetPrice(asset, { force: true })));
-			const successCount = results.filter(Boolean).length;
-			if (successCount === this.assets.length) {
-				this.showNotification('Prices updated successfully!', 'success');
-			} else if (successCount > 0) {
-				this.showNotification('Some prices failed to update', 'warning');
-			} else {
-				this.showNotification('Failed to update prices', 'error');
+			// Batch assets by API type for more efficient processing
+			const stockAssets = this.assets.filter(a => a.type !== 'Crypto');
+			const cryptoAssets = this.assets.filter(a => a.type === 'Crypto');
+			
+			// Process in batches to avoid overwhelming APIs
+			const batchSize = 5;
+			const allResults = [];
+			
+			// Process stocks in batches
+			for (let i = 0; i < stockAssets.length; i += batchSize) {
+				const batch = stockAssets.slice(i, i + batchSize);
+				const batchResults = await Promise.all(
+					batch.map(asset => this.refreshAssetPrice(asset, { force: true }))
+				);
+				allResults.push(...batchResults);
+				
+				// Small delay between batches
+				if (i + batchSize < stockAssets.length) {
+					await this.delay(500);
+				}
 			}
+			
+			// Process crypto assets (usually faster API)
+			if (cryptoAssets.length > 0) {
+				const cryptoResults = await Promise.all(
+					cryptoAssets.map(asset => this.refreshAssetPrice(asset, { force: true }))
+				);
+				allResults.push(...cryptoResults);
+			}
+			
+			const successCount = allResults.filter(Boolean).length;
+			const failureCount = allResults.length - successCount;
+			
+			if (successCount === allResults.length) {
+				this.showNotification('All prices updated successfully!', 'success');
+			} else if (successCount > 0) {
+				this.showNotification(`${successCount} prices updated, ${failureCount} failed`, 'warning');
+			} else {
+				this.showNotification('Failed to update prices - using cached/demo data', 'error');
+			}
+			
 			this.refreshAllData();
 		} catch (error) {
-			this.showNotification('Failed to update prices', 'error');
+			console.error('Refresh all prices error:', error);
+			this.showNotification(`Price update failed: ${error.message}`, 'error');
 		} finally {
 			this.setLoading(false);
 		}
@@ -837,8 +1288,8 @@ class PortfolioDashboard {
             const symbolInput = document.querySelector('input[name="symbol"]');
             const typeSelect = document.querySelector('select[name="type"]');
             if (symbolInput && typeSelect) {
-                symbolInput.addEventListener('blur', () => this.validateSymbol());
-                typeSelect.addEventListener('change', () => this.validateSymbol());
+                symbolInput.addEventListener('blur', () => this.validateSymbolInput());
+                typeSelect.addEventListener('change', () => this.validateSymbolInput());
 
                 let suggestTimer = null;
                 symbolInput.addEventListener('input', (e) => {
@@ -888,7 +1339,7 @@ class PortfolioDashboard {
         }, 100);
     }
 
-    async validateSymbol() {
+    async validateSymbolInput() {
         const symbolInput = document.querySelector('input[name="symbol"]');
         const typeSelect = document.querySelector('select[name="type"]');
         const nameInput = document.querySelector('input[name="name"]');
@@ -899,9 +1350,19 @@ class PortfolioDashboard {
 
         if (validationMsg) validationMsg.remove();
 
-        const symbol = symbolInput.value.trim().toUpperCase();
-        const type = typeSelect.value;
+        let symbol;
+        try {
+            symbol = this.validateSymbol(symbolInput.value.trim());
+        } catch (error) {
+            const msgDiv = document.createElement('div');
+            msgDiv.id = 'symbolValidation';
+            msgDiv.className = 'validation-message validation-error';
+            msgDiv.textContent = `⚠ ${error.message}`;
+            symbolInput.parentNode.appendChild(msgDiv);
+            return;
+        }
 
+        const type = typeSelect.value;
         const validation = await this.validateAndFetchAssetData(symbol, type);
 
         const msgDiv = document.createElement('div');
@@ -1366,7 +1827,7 @@ class PortfolioDashboard {
         container.innerHTML = '';
         
         // Force revalidation
-        this.validateSymbol();
+        this.validateSymbolInput();
     }
 
     switchTab(tabName) {
@@ -1406,6 +1867,8 @@ class PortfolioDashboard {
                 this.updateProjectionChart();
             } else if (tabName === 'reports') {
                 this.updateTypeBreakdownChart();
+            } else if (tabName === 'settings') {
+                this.initializeSettingsUI();
             }
         }, 100);
     }
@@ -2225,13 +2688,13 @@ class PortfolioDashboard {
     }
 
     updateAllCharts() {
-        setTimeout(() => {
+        this.debounceChartUpdate(() => {
             this.updateAllocationChart();
             this.updatePerformanceChart();
             this.updateContributionsChart();
             this.updateProjectionChart();
             this.updateTypeBreakdownChart();
-        }, 100);
+        });
     }
 
     calculateProjectedValue(currentValue, growthRate, years) {
@@ -2401,6 +2864,280 @@ class PortfolioDashboard {
             hour: '2-digit',
             minute: '2-digit'
         });
+    }
+
+    // Settings UI methods
+    
+    initializeSettingsUI() {
+        // Update settings UI with current values
+        const cacheDurationInput = document.getElementById('cacheDuration');
+        const requestTimeoutInput = document.getElementById('requestTimeout');
+        const backendUrlInput = document.getElementById('backendUrl');
+        
+        if (cacheDurationInput) {
+            cacheDurationInput.value = Math.round(this.cacheTimeout / 60000);
+        }
+        if (requestTimeoutInput) {
+            requestTimeoutInput.value = Math.round(this.requestTimeout / 1000);
+        }
+        if (backendUrlInput) {
+            backendUrlInput.value = this.backendUrl;
+        }
+        
+        // Load API keys into inputs (show asterisks if set)
+        const fmpInput = document.getElementById('fmpApiKey');
+        const twelvedataInput = document.getElementById('twelvedataApiKey');
+        const iexInput = document.getElementById('iexApiKey');
+        
+        if (fmpInput && this.apis.apiKeys.fmp) {
+            fmpInput.placeholder = '••••••••••••••••';
+        }
+        if (twelvedataInput && this.apis.apiKeys.twelvedata) {
+            twelvedataInput.placeholder = '••••••••••••••••';
+        }
+        if (iexInput && this.apis.apiKeys.iex) {
+            iexInput.placeholder = '••••••••••••••••';
+        }
+        
+        // Update status displays
+        this.updateBackendStatus(this.backendEnabled);
+        this.refreshApiStats();
+        this.showCacheStats();
+    }
+    
+    async testBackendConnection() {
+        try {
+            const response = await fetch(`${this.backendUrl}/health`);
+            if (response.ok) {
+                const data = await response.json();
+                this.showNotification('Backend connection successful!', 'success');
+                this.updateBackendStatus(true, data);
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } catch (error) {
+            this.showNotification(`Backend connection failed: ${error.message}`, 'error');
+            this.updateBackendStatus(false, null);
+        }
+    }
+
+    updateBackendUrl(newUrl) {
+        if (!newUrl) {
+            this.showNotification('Please enter a valid backend URL', 'error');
+            return;
+        }
+        
+        try {
+            new URL(newUrl); // Validate URL format
+            this.backendUrl = newUrl;
+            localStorage.setItem('backend_url', newUrl);
+            this.showNotification('Backend URL updated', 'info');
+            this.testBackendConnection();
+        } catch (error) {
+            this.showNotification('Invalid URL format', 'error');
+        }
+    }
+
+    updateBackendStatus(isConnected, healthData = null) {
+        const container = document.getElementById('backendStatus');
+        if (!container) return;
+        
+        if (isConnected) {
+            container.innerHTML = `
+                <div class="status status--success">
+                    ✅ Connected to backend
+                    ${healthData ? `<br><small>Cache: ${healthData.cache_size} entries</small>` : ''}
+                </div>
+            `;
+        } else {
+            container.innerHTML = `
+                <div class="status status--error">
+                    ❌ Backend not available - using direct API calls
+                </div>
+            `;
+        }
+    }
+
+    refreshApiStats() {
+        const container = document.getElementById('apiStatus');
+        if (!container) return;
+        
+        const stats = Array.from(this.apiStats.entries());
+        const circuitBreakers = Array.from(this.circuitBreakers.entries());
+        
+        let html = '<div class="api-stats">';
+        
+        if (stats.length > 0) {
+            html += '<h5>API Performance:</h5>';
+            stats.forEach(([domain, stat]) => {
+                const successRate = stat.success + stat.failure > 0 ? 
+                    (stat.success / (stat.success + stat.failure) * 100).toFixed(1) : 0;
+                html += `
+                    <div class="api-stat-item">
+                        <strong>${domain}</strong>: ${successRate}% success rate
+                        <small>(${stat.success} success, ${stat.failure} failures)</small>
+                    </div>
+                `;
+            });
+        }
+        
+        if (circuitBreakers.length > 0) {
+            html += '<h5>Circuit Breakers:</h5>';
+            circuitBreakers.forEach(([api, breaker]) => {
+                const timeLeft = Math.max(0, (breaker.timeout - (Date.now() - breaker.lastFailure)) / 1000);
+                html += `
+                    <div class="api-stat-item">
+                        <strong>${api}</strong>: ${breaker.failureCount} failures
+                        ${timeLeft > 0 ? `<small>(retry in ${timeLeft.toFixed(0)}s)</small>` : '<small>(ready to retry)</small>'}
+                    </div>
+                `;
+            });
+        }
+        
+        if (stats.length === 0 && circuitBreakers.length === 0) {
+            html += '<p>No API statistics available yet</p>';
+        }
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    showCacheStats() {
+        const container = document.getElementById('cacheStats');
+        if (!container) return;
+        
+        const cacheSize = this.priceCache.size;
+        const entries = Array.from(this.priceCache.entries());
+        
+        // Calculate cache statistics
+        const now = Date.now();
+        const validEntries = entries.filter(([_, entry]) => now - entry.timestamp < this.cacheTimeout);
+        const expiredEntries = entries.length - validEntries.length;
+        
+        const stockEntries = entries.filter(([key]) => key.startsWith('stock:')).length;
+        const cryptoEntries = entries.filter(([key]) => key.startsWith('crypto:')).length;
+        const fxEntries = entries.filter(([key]) => key.startsWith('fx_')).length;
+        
+        container.innerHTML = `
+            <div class="cache-stats-grid">
+                <div class="cache-stat">
+                    <span class="cache-stat-label">Total Entries:</span>
+                    <span class="cache-stat-value">${cacheSize}</span>
+                </div>
+                <div class="cache-stat">
+                    <span class="cache-stat-label">Valid:</span>
+                    <span class="cache-stat-value text-success">${validEntries.length}</span>
+                </div>
+                <div class="cache-stat">
+                    <span class="cache-stat-label">Expired:</span>
+                    <span class="cache-stat-value text-warning">${expiredEntries}</span>
+                </div>
+                <div class="cache-stat">
+                    <span class="cache-stat-label">Stocks:</span>
+                    <span class="cache-stat-value">${stockEntries}</span>
+                </div>
+                <div class="cache-stat">
+                    <span class="cache-stat-label">Crypto:</span>
+                    <span class="cache-stat-value">${cryptoEntries}</span>
+                </div>
+                <div class="cache-stat">
+                    <span class="cache-stat-label">FX Rates:</span>
+                    <span class="cache-stat-value">${fxEntries}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    clearCache() {
+        if (confirm('Are you sure you want to clear all cached data? This will force fresh API calls for all assets.')) {
+            this.priceCache.clear();
+            localStorage.removeItem('portfolioCache');
+            localStorage.removeItem('portfolioCacheTimestamp');
+            this.showNotification('Cache cleared successfully', 'success');
+            this.showCacheStats();
+        }
+    }
+
+    exportCache() {
+        try {
+            const cacheData = Array.from(this.priceCache.entries());
+            const exportData = {
+                timestamp: new Date().toISOString(),
+                cache_size: cacheData.length,
+                entries: cacheData
+            };
+            
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `portfolio-cache-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            this.showNotification('Cache exported successfully', 'success');
+        } catch (error) {
+            this.showNotification('Cache export failed', 'error');
+        }
+    }
+
+    updateAdvancedSettings() {
+        const cacheDurationInput = document.getElementById('cacheDuration');
+        const requestTimeoutInput = document.getElementById('requestTimeout');
+        
+        if (cacheDurationInput) {
+            const minutes = parseInt(cacheDurationInput.value);
+            if (minutes >= 1 && minutes <= 60) {
+                this.cacheTimeout = minutes * 60 * 1000;
+                localStorage.setItem('cache_duration', minutes.toString());
+            }
+        }
+        
+        if (requestTimeoutInput) {
+            const seconds = parseInt(requestTimeoutInput.value);
+            if (seconds >= 3 && seconds <= 30) {
+                this.requestTimeout = seconds * 1000;
+                localStorage.setItem('request_timeout', seconds.toString());
+            }
+        }
+        
+        this.showNotification('Settings updated successfully', 'success');
+    }
+
+    resetToDefaults() {
+        if (confirm('Reset all settings to defaults? This will clear API keys and cached data.')) {
+            // Reset cache settings
+            this.cacheTimeout = 15 * 60 * 1000;
+            this.requestTimeout = 10000;
+            
+            // Clear localStorage settings
+            localStorage.removeItem('cache_duration');
+            localStorage.removeItem('request_timeout');
+            localStorage.removeItem('backend_url');
+            localStorage.removeItem('fmp_api_key');
+            localStorage.removeItem('twelvedata_api_key');
+            localStorage.removeItem('iex_api_key');
+            
+            // Reset API keys
+            this.apis.apiKeys = { fmp: null, twelvedata: null, iex: null };
+            
+            // Clear cache
+            this.priceCache.clear();
+            
+            // Reset UI
+            document.getElementById('cacheDuration').value = 15;
+            document.getElementById('requestTimeout').value = 10;
+            document.getElementById('backendUrl').value = 'http://localhost:5000/api';
+            document.getElementById('fmpApiKey').value = '';
+            document.getElementById('twelvedataApiKey').value = '';
+            document.getElementById('iexApiKey').value = '';
+            
+            this.showNotification('Settings reset to defaults', 'success');
+            this.showCacheStats();
+            this.refreshApiStats();
+        }
     }
 }
 
