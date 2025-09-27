@@ -12,6 +12,8 @@ class PortfolioDashboard {
         this.cacheTimeout = 15 * 60 * 1000; // 15 minutes
         this.cryptoList = null;
         this.isLoading = false;
+        this.fxRates = { USD: 1 }; // Initialize with USD as base
+        this.fxCacheTimeout = 60 * 60 * 1000; // 1 hour for FX rates
 
 		// API endpoints - using proxy-free alternatives
 		this.apis = {
@@ -20,6 +22,8 @@ class PortfolioDashboard {
 			// CoinGecko endpoints
 			coinGecko: "https://api.coingecko.com/api/v3/simple/price",
 			cryptoList: "https://api.coingecko.com/api/v3/coins/list",
+			// Exchange rates endpoint
+			exchangeRates: "https://api.exchangerate-api.com/v4/latest/USD",
 			// Fallback demo data toggle
 			demoMode: false
 		};
@@ -35,6 +39,16 @@ class PortfolioDashboard {
             'SPY': { price: 445.80, name: 'SPDR S&P 500 ETF' },
             'bitcoin': { price: 65420.00, name: 'Bitcoin' },
             'ethereum': { price: 2650.75, name: 'Ethereum' }
+        };
+
+        // Fallback exchange rates (approximate values)
+        this.fallbackFxRates = {
+            USD: 1.0,
+            EUR: 0.85,
+            DKK: 6.9,
+            GBP: 0.75,
+            SEK: 10.8,
+            NOK: 11.2
         };
 
         this.init();
@@ -72,7 +86,10 @@ class PortfolioDashboard {
 
     async init() {
         this.setupEventListeners();
-        await this.loadCryptoList();
+        await Promise.all([
+            this.loadCryptoList(),
+            this.loadExchangeRates()
+        ]);
         this.loadSampleData();
         this.updatePortfolioSummary();
         this.renderAssetsTable();
@@ -92,42 +109,10 @@ class PortfolioDashboard {
     }
 
     loadSampleData() {
-        // Load with some sample data with realistic prices
-        this.assets = [
-            {
-                id: 1,
-                name: "Apple Inc.",
-                symbol: "AAPL",
-                type: "Stock",
-                currentPrice: 175.50,
-                shares: 10,
-                currentValue: 1755.00,
-                totalContributed: 1500.00,
-                expectedGrowthRate: 8.0,
-                dateAdded: "2024-01-15",
-                lastUpdated: new Date().toISOString()
-            },
-            {
-                id: 2,
-                name: "Novo Nordisk A/S",
-                symbol: "NOVO-B.CO",
-                type: "Stock",
-                currentPrice: 892.40,
-                shares: 50,
-                currentValue: 44620.00,
-                totalContributed: 41000.00,
-                expectedGrowthRate: 7.0,
-                dateAdded: "2024-02-10",
-                lastUpdated: new Date().toISOString()
-            }
-        ];
-
-        this.contributions = [
-            {assetId: 1, date: "2024-01-15", amount: 1500.00},
-            {assetId: 2, date: "2024-02-10", amount: 41000.00}
-        ];
-
-        this.nextAssetId = 3;
+        // Start with empty portfolio - no hardcoded assets
+        this.assets = [];
+        this.contributions = [];
+        this.nextAssetId = 1;
     }
 
     async loadCryptoList() {
@@ -138,6 +123,39 @@ class PortfolioDashboard {
             }
         } catch (error) {
             console.log('Using demo mode for crypto data');
+        }
+    }
+
+    async loadExchangeRates() {
+        const cacheKey = 'fx_rates';
+        const cached = this.priceCache.get(cacheKey);
+        
+        // Check if we have cached FX rates that are still valid
+        if (cached && (Date.now() - cached.timestamp < this.fxCacheTimeout)) {
+            this.fxRates = cached.data;
+            return;
+        }
+
+        try {
+            const response = await fetch(this.apis.exchangeRates);
+            if (response.ok) {
+                const data = await response.json();
+                if (data && data.rates) {
+                    this.fxRates = { USD: 1, ...data.rates };
+                    this.priceCache.set(cacheKey, { 
+                        timestamp: Date.now(), 
+                        data: this.fxRates 
+                    });
+                    console.log('Exchange rates loaded successfully');
+                } else {
+                    throw new Error('Invalid exchange rate data');
+                }
+            } else {
+                throw new Error('Exchange rate API unavailable');
+            }
+        } catch (error) {
+            console.log('Using fallback exchange rates:', error.message);
+            this.fxRates = this.fallbackFxRates;
         }
     }
 
@@ -452,6 +470,14 @@ class PortfolioDashboard {
         // Export
         document.getElementById('exportBtn').addEventListener('click', () => this.exportData());
 
+        // Display currency change
+        const displayCurrencySelect = document.getElementById('displayCurrency');
+        if (displayCurrencySelect) {
+            displayCurrencySelect.addEventListener('change', () => {
+                this.refreshAllData();
+            });
+        }
+
         // Modal management
         document.querySelectorAll('.modal-close, .btn-cancel').forEach(btn => {
             btn.addEventListener('click', (e) => this.closeModal(e.target.closest('.modal')));
@@ -473,6 +499,16 @@ class PortfolioDashboard {
             }
         });
 
+        // Close suggestions dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const container = document.getElementById('symbolSuggestions');
+            const symbolInput = document.querySelector('input[name="symbol"]');
+            if (container && !container.contains(e.target) && e.target !== symbolInput) {
+                container.classList.add('hidden');
+                container.innerHTML = '';
+            }
+        });
+
         // Table sorting
         document.querySelectorAll('.sortable').forEach(header => {
             header.addEventListener('click', (e) => this.handleSort(e.target.dataset.sort));
@@ -491,6 +527,44 @@ class PortfolioDashboard {
                     clearTimeout(suggestTimer);
                     const q = e.target.value.trim();
                     suggestTimer = setTimeout(() => this.fetchSymbolSuggestions(q), 250);
+                });
+
+                // Add keyboard navigation for dropdown
+                symbolInput.addEventListener('keydown', (e) => {
+                    const container = document.getElementById('symbolSuggestions');
+                    if (!container || container.classList.contains('hidden')) return;
+                    
+                    const items = container.querySelectorAll('.suggestion-item');
+                    if (items.length === 0) return;
+                    
+                    const focusedIndex = Array.from(items).findIndex(item => item === document.activeElement);
+                    
+                    switch (e.key) {
+                        case 'ArrowDown':
+                            e.preventDefault();
+                            if (focusedIndex === -1) {
+                                items[0].focus();
+                            } else {
+                                const nextIndex = focusedIndex < items.length - 1 ? focusedIndex + 1 : 0;
+                                items[nextIndex].focus();
+                            }
+                            break;
+                        case 'ArrowUp':
+                            e.preventDefault();
+                            if (focusedIndex === -1) {
+                                items[items.length - 1].focus();
+                            } else {
+                                const prevIndex = focusedIndex > 0 ? focusedIndex - 1 : items.length - 1;
+                                items[prevIndex].focus();
+                            }
+                            break;
+                        case 'Escape':
+                            e.preventDefault();
+                            container.classList.add('hidden');
+                            container.innerHTML = '';
+                            symbolInput.focus();
+                            break;
+                    }
                 });
             }
         }, 100);
@@ -530,6 +604,55 @@ class PortfolioDashboard {
         symbolInput.parentNode.appendChild(msgDiv);
     }
 
+    async searchStockAssets(query) {
+        try {
+            const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('Search failed');
+            const data = await res.json();
+            const quotes = data.quotes || [];
+            
+            return quotes.map(q => ({
+                symbol: q.symbol || '',
+                name: q.shortname || q.longname || '',
+                exchange: q.exchange || q.exchangeDisplay || '',
+                currency: q.currency || 'USD',
+                isin: q.isin || '',
+                type: q.typeDisp || q.quoteType || '',
+                source: 'yahoo'
+            }));
+        } catch (error) {
+            console.log('Stock search failed:', error.message);
+            return [];
+        }
+    }
+
+    async searchCryptoAssets(query) {
+        if (!this.cryptoList) return [];
+        
+        try {
+            const queryLower = query.toLowerCase();
+            const matches = this.cryptoList.filter(crypto => {
+                const symbolMatch = crypto.symbol && crypto.symbol.toLowerCase().includes(queryLower);
+                const nameMatch = crypto.name && crypto.name.toLowerCase().includes(queryLower);
+                return symbolMatch || nameMatch;
+            }).slice(0, 5); // Limit crypto results
+            
+            return matches.map(crypto => ({
+                symbol: crypto.symbol.toUpperCase(),
+                name: crypto.name,
+                exchange: 'CoinGecko',
+                currency: 'USD',
+                isin: '',
+                type: 'CRYPTOCURRENCY',
+                source: 'crypto'
+            }));
+        } catch (error) {
+            console.log('Crypto search failed:', error.message);
+            return [];
+        }
+    }
+
     async fetchSymbolSuggestions(query) {
         const container = document.getElementById('symbolSuggestions');
         if (!container) return;
@@ -538,29 +661,99 @@ class PortfolioDashboard {
             container.innerHTML = '';
             return;
         }
+        
         try {
-            // Yahoo Finance symbol suggest endpoint
-            const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error('Search failed');
-            const data = await res.json();
-            const quotes = data.quotes || [];
-            if (quotes.length === 0) {
-                container.classList.add('hidden');
-                container.innerHTML = '';
+            // Set loading state
+            container.innerHTML = '<div class="suggestion-loading">Searching...</div>';
+            container.classList.remove('hidden');
+            
+            // Search both traditional assets and crypto
+            const [stockResults, cryptoResults] = await Promise.all([
+                this.searchStockAssets(query),
+                this.searchCryptoAssets(query)
+            ]);
+            
+            const allResults = [...stockResults, ...cryptoResults];
+            
+            if (allResults.length === 0) {
+                container.innerHTML = '<div class="suggestion-empty">No assets found</div>';
+                setTimeout(() => {
+                    container.classList.add('hidden');
+                    container.innerHTML = '';
+                }, 2000);
                 return;
             }
-            container.innerHTML = quotes.map(q => {
-                const symbol = q.symbol || '';
-                const name = q.shortname || q.longname || '';
-                const exch = q.exchange || q.exchangeDisplay || '';
-                const curr = q.currency || '';
-                const isin = q.isin || '';
-                const meta = [exch, curr, isin].filter(Boolean).join(' · ');
+
+            // Sort results by relevance - exact matches first, then partial matches
+            const sortedResults = allResults.sort((a, b) => {
+                const aSymbol = (a.symbol || '').toLowerCase();
+                const aName = (a.name || '').toLowerCase();
+                const bSymbol = (b.symbol || '').toLowerCase();
+                const bName = (b.name || '').toLowerCase();
+                const queryLower = query.toLowerCase();
+                
+                // Exact symbol match gets highest priority
+                if (aSymbol === queryLower && bSymbol !== queryLower) return -1;
+                if (bSymbol === queryLower && aSymbol !== queryLower) return 1;
+                
+                // Symbol starts with query gets higher priority
+                if (aSymbol.startsWith(queryLower) && !bSymbol.startsWith(queryLower)) return -1;
+                if (bSymbol.startsWith(queryLower) && !aSymbol.startsWith(queryLower)) return 1;
+                
+                // Name starts with query
+                if (aName.startsWith(queryLower) && !bName.startsWith(queryLower)) return -1;
+                if (bName.startsWith(queryLower) && !aName.startsWith(queryLower)) return 1;
+                
+                return 0;
+            });
+
+            container.innerHTML = sortedResults.map(result => {
+                const symbol = result.symbol || '';
+                const name = result.name || '';
+                const exch = result.exchange || '';
+                const curr = result.currency || '';
+                const isin = result.isin || '';
+                const typeInfo = result.type || '';
+                
+                // Build comprehensive metadata with priority information
+                const metaParts = [];
+                
+                // Add exchange first for stocks (most important for disambiguation)
+                if (exch && result.source !== 'crypto') metaParts.push(exch);
+                
+                // Add currency if not USD (important for international stocks)
+                if (curr && curr !== 'USD') metaParts.push(`${curr}`);
+                
+                // Add asset type for clarity
+                if (typeInfo) {
+                    const friendlyType = typeInfo.replace('EQUITY', 'Stock').replace('CRYPTOCURRENCY', 'Crypto');
+                    metaParts.push(friendlyType);
+                }
+                
+                // Add ISIN for precise identification (especially useful for European stocks)
+                if (isin && isin.length >= 10) metaParts.push(`ISIN: ${isin.substring(0, 8)}...`);
+                
+                // Special handling for crypto
+                if (result.source === 'crypto') {
+                    metaParts.unshift('Cryptocurrency');
+                }
+                
+                const meta = metaParts.join(' • ');
+                
+                // Truncate long names for better display but show more for important disambiguation
+                const displayName = name.length > 60 ? name.substring(0, 57) + '...' : name;
+                
+                // Visual indicators
+                const sourceIndicator = result.source === 'crypto' ? '₿' : 
+                                     typeInfo === 'ETF' ? '📊' : '';
+                
                 return `
-                    <div class="suggestion-item" role="option" data-symbol="${symbol}" data-currency="${curr}" data-name="${name}">
-                        <div><strong>${symbol}</strong> — ${name}</div>
-                        <div class="suggestion-meta">${meta}</div>
+                    <div class="suggestion-item" role="option" data-symbol="${symbol}" data-currency="${curr}" data-name="${name}" data-exchange="${exch}" data-type="${typeInfo}" data-source="${result.source}">
+                        <div class="suggestion-main">
+                            <div class="suggestion-symbol"><strong>${sourceIndicator} ${symbol}</strong></div>
+                            <div class="suggestion-name">${displayName}</div>
+                            ${meta ? `<div class="suggestion-meta">${meta}</div>` : ''}
+                        </div>
                     </div>
                 `;
             }).join('');
@@ -568,30 +761,83 @@ class PortfolioDashboard {
 
             container.querySelectorAll('.suggestion-item').forEach(item => {
                 item.addEventListener('click', async () => {
-                    const symbolInput = document.querySelector('input[name="symbol"]');
-                    const nameInput = document.querySelector('input[name="name"]');
-                    const priceInput = document.querySelector('input[name="currentPrice"]');
-                    const typeSelect = document.querySelector('select[name="type"]');
-                    const symbol = item.getAttribute('data-symbol');
-                    const name = item.getAttribute('data-name');
-                    const currency = item.getAttribute('data-currency') || 'USD';
-                    if (symbolInput) symbolInput.value = symbol;
-                    if (nameInput) nameInput.value = name;
-                    // fetch a fresh price to reflect the selected symbol
-                    const priceData = typeSelect && typeSelect.value === 'Crypto' ? await this.fetchCryptoPrice(symbol) : await this.fetchStockPrice(symbol);
-                    if (priceInput && priceData && typeof priceData.price === 'number') priceInput.value = priceData.price.toFixed(2);
-                    // attach currency hint on the name field
-                    nameInput.setAttribute('data-currency', currency);
-                    container.classList.add('hidden');
-                    container.innerHTML = '';
-                    // force revalidation summary
-                    this.validateSymbol();
+                    await this.selectAssetFromSuggestion(item);
                 });
+                
+                // Add keyboard navigation
+                item.addEventListener('keydown', async (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        await this.selectAssetFromSuggestion(item);
+                    }
+                });
+                
+                // Make focusable
+                item.setAttribute('tabindex', '0');
             });
         } catch (e) {
-            container.classList.add('hidden');
-            container.innerHTML = '';
+            container.innerHTML = '<div class="suggestion-error">Search temporarily unavailable</div>';
+            setTimeout(() => {
+                container.classList.add('hidden');
+                container.innerHTML = '';
+            }, 3000);
         }
+    }
+
+    async selectAssetFromSuggestion(item) {
+        const symbolInput = document.querySelector('input[name="symbol"]');
+        const nameInput = document.querySelector('input[name="name"]');
+        const priceInput = document.querySelector('input[name="currentPrice"]');
+        const typeSelect = document.querySelector('select[name="type"]');
+        const currencySelect = document.getElementById('assetCurrency');
+        const container = document.getElementById('symbolSuggestions');
+        
+        const symbol = item.getAttribute('data-symbol');
+        const name = item.getAttribute('data-name');
+        const currency = item.getAttribute('data-currency') || 'USD';
+        const exchange = item.getAttribute('data-exchange') || '';
+        const assetType = item.getAttribute('data-type') || '';
+        
+        if (symbolInput) symbolInput.value = symbol;
+        if (nameInput) nameInput.value = name;
+        if (currencySelect) currencySelect.value = currency;
+        
+        // Auto-detect asset type based on the suggestion
+        const source = item.getAttribute('data-source') || '';
+        if (typeSelect) {
+            if (source === 'crypto') {
+                typeSelect.value = 'Crypto';
+            } else if (assetType) {
+                const typeMapping = {
+                    'EQUITY': 'Stock',
+                    'ETF': 'ETF',
+                    'CRYPTOCURRENCY': 'Crypto',
+                    'BOND': 'Bond'
+                };
+                const mappedType = typeMapping[assetType.toUpperCase()];
+                if (mappedType) {
+                    typeSelect.value = mappedType;
+                }
+            }
+        }
+        
+        // Fetch fresh price data
+        try {
+            const priceData = typeSelect && typeSelect.value === 'Crypto' 
+                ? await this.fetchCryptoPrice(symbol) 
+                : await this.fetchStockPrice(symbol);
+            if (priceInput && priceData && typeof priceData.price === 'number') {
+                priceInput.value = priceData.price.toFixed(2);
+            }
+        } catch (error) {
+            console.log('Could not fetch price for selected asset');
+        }
+        
+        container.classList.add('hidden');
+        container.innerHTML = '';
+        
+        // Force revalidation
+        this.validateSymbol();
     }
 
     switchTab(tabName) {
@@ -690,10 +936,13 @@ class PortfolioDashboard {
         tbody.innerHTML = filteredAssets.map(asset => {
             const gain = (asset.currentValue || 0) - asset.totalContributed;
             const gainPercent = asset.totalContributed > 0 ? (gain / asset.totalContributed) * 100 : 0;
-            const priceDisplay = this.toDisplayCurrency(asset.currentPrice || 0, asset.currency || 'USD');
-            const valueDisplay = this.toDisplayCurrency(asset.currentValue || 0, asset.currency || 'USD');
-            const contribDisplay = this.toDisplayCurrency(asset.totalContributed || 0, asset.currency || 'USD');
-            const gainDisplay = this.toDisplayCurrency(gain, asset.currency || 'USD');
+            const assetCurrency = asset.currency || 'USD';
+            
+            // Individual assets show in their native currency (no conversion)
+            const priceDisplay = asset.currentPrice || 0;
+            const valueDisplay = asset.currentValue || 0;
+            const contribDisplay = asset.totalContributed || 0;
+            const gainDisplay = gain;
             
             return `
                 <tr>
@@ -705,13 +954,13 @@ class PortfolioDashboard {
                     </td>
                     <td><span class="asset-type asset-type--${asset.type.toLowerCase()}">${asset.type}</span></td>
                     <td><strong>${asset.symbol}</strong></td>
-                    <td>${asset.currentPrice ? this.formatCurrency(priceDisplay, displayCur) : this.formatCurrency(0, displayCur)}</td>
+                    <td>${this.formatCurrency(priceDisplay, assetCurrency)}</td>
                     <td>${this.formatNumber(asset.shares)}</td>
-                    <td><strong>${asset.currentValue ? this.formatCurrency(valueDisplay, displayCur) : this.formatCurrency(0, displayCur)}</strong></td>
-                    <td>${this.formatCurrency(contribDisplay, displayCur)}</td>
+                    <td><strong>${this.formatCurrency(valueDisplay, assetCurrency)}</strong></td>
+                    <td>${this.formatCurrency(contribDisplay, assetCurrency)}</td>
                     <td>
                         <span class="${gain >= 0 ? 'text-success' : 'text-error'}">
-                            ${gain >= 0 ? '+' : ''}${this.formatCurrency(gainDisplay, displayCur)} (${gainPercent.toFixed(1)}%)
+                            ${gain >= 0 ? '+' : ''}${this.formatCurrency(gainDisplay, assetCurrency)} (${gainPercent.toFixed(1)}%)
                         </span>
                     </td>
                     <td>${asset.expectedGrowthRate}%</td>
@@ -952,23 +1201,25 @@ class PortfolioDashboard {
             return;
         }
 
-        const displayCur = this.getDisplayCurrency();
         container.innerHTML = recentAssets.map(asset => {
             const gain = (asset.currentValue || 0) - asset.totalContributed;
             const gainPercent = asset.totalContributed > 0 ? (gain / asset.totalContributed) * 100 : 0;
-            const valueDisplay = this.toDisplayCurrency(asset.currentValue || 0, asset.currency || 'USD');
-            const gainDisplay = this.toDisplayCurrency(gain, asset.currency || 'USD');
+            const assetCurrency = asset.currency || 'USD';
+            
+            // Individual assets show in their native currency
+            const valueDisplay = asset.currentValue || 0;
+            const gainDisplay = gain;
             
             return `
                 <div class="recent-asset-item">
                     <div class="recent-asset-info">
                         <h4>${asset.name}</h4>
-                        <p>${asset.symbol} • ${asset.type}</p>
+                        <p>${asset.symbol} • ${asset.type} • ${assetCurrency}</p>
                     </div>
                     <div class="recent-asset-value">
-                        <span class="value">${asset.currentValue ? this.formatCurrency(valueDisplay, displayCur) : this.formatCurrency(0, displayCur)}</span>
+                        <span class="value">${this.formatCurrency(valueDisplay, assetCurrency)}</span>
                         <span class="change ${gain >= 0 ? 'positive' : 'negative'}">
-                            ${gain >= 0 ? '+' : ''}${this.formatCurrency(gainDisplay, displayCur)} (${gainPercent.toFixed(2)}%)
+                            ${gain >= 0 ? '+' : ''}${this.formatCurrency(gainDisplay, assetCurrency)} (${gainPercent.toFixed(2)}%)
                         </span>
                     </div>
                 </div>
@@ -992,18 +1243,20 @@ class PortfolioDashboard {
             return;
         }
 
-        const displayCur = this.getDisplayCurrency();
         container.innerHTML = recentContributions.map(contribution => {
             const asset = this.assets.find(a => a.id === contribution.assetId);
-            const amountDisplay = this.toDisplayCurrency(contribution.amount, asset ? asset.currency || 'USD' : 'USD');
+            const assetCurrency = asset ? asset.currency || 'USD' : 'USD';
+            
+            // Contributions show in asset's native currency
+            const amountDisplay = contribution.amount;
             return `
                 <div class="contribution-item">
                     <div class="contribution-info">
                         <h4>${asset ? asset.name : 'Unknown Asset'}</h4>
-                        <p>${this.formatDate(contribution.date)}</p>
+                        <p>${this.formatDate(contribution.date)} • ${assetCurrency}</p>
                     </div>
                     <div class="contribution-amount">
-                        +${this.formatCurrency(amountDisplay, displayCur)}
+                        +${this.formatCurrency(amountDisplay, assetCurrency)}
                     </div>
                 </div>
             `;
@@ -1029,25 +1282,26 @@ class PortfolioDashboard {
             const projectedValue = this.calculateProjectedValue(currentValue, asset.expectedGrowthRate, period);
             const projectedGain = projectedValue - currentValue;
             const totalReturnPercent = this.calculatePercentage(projectedGain, currentValue);
+            const assetCurrency = asset.currency || 'USD';
 
             return `
                 <div class="projection-item">
                     <div class="projection-header">
                         <h4>${asset.name}</h4>
-                        <span class="projection-growth-rate">${asset.expectedGrowthRate}% annually</span>
+                        <span class="projection-growth-rate">${asset.expectedGrowthRate}% annually • ${assetCurrency}</span>
                     </div>
                     <div class="projection-values">
                         <div class="projection-value">
                             <span>Current Value:</span>
-                            <span>${this.formatCurrency(currentValue)}</span>
+                            <span>${this.formatCurrency(currentValue, assetCurrency)}</span>
                         </div>
                         <div class="projection-value">
                             <span>Projected (${period}y):</span>
-                            <strong>${this.formatCurrency(projectedValue)}</strong>
+                            <strong>${this.formatCurrency(projectedValue, assetCurrency)}</strong>
                         </div>
                         <div class="projection-value">
                             <span>Expected Gain:</span>
-                            <strong>${this.formatCurrency(projectedGain)}</strong>
+                            <strong>${this.formatCurrency(projectedGain, assetCurrency)}</strong>
                         </div>
                         <div class="projection-value">
                             <span>Total Return:</span>
@@ -1067,6 +1321,7 @@ class PortfolioDashboard {
             return;
         }
         
+        const displayCur = this.getDisplayCurrency();
         const totalValue = this.assets.reduce((sum, asset) => sum + this.toDisplayCurrency((asset.currentValue || 0), asset.currency || 'USD'), 0);
         const totalContributed = this.assets.reduce((sum, asset) => sum + this.toDisplayCurrency(asset.totalContributed, asset.currency || 'USD'), 0);
         
@@ -1092,12 +1347,12 @@ class PortfolioDashboard {
         container.innerHTML = `
             <div class="performance-summary-grid">
                 <div class="performance-metric">
-                    <span class="performance-metric-label">Portfolio Value</span>
-                    <span class="performance-metric-value">${this.formatCurrency(totalValue)}</span>
+                    <span class="performance-metric-label">Portfolio Value (${displayCur})</span>
+                    <span class="performance-metric-value">${this.formatCurrency(totalValue, displayCur)}</span>
                 </div>
                 <div class="performance-metric">
-                    <span class="performance-metric-label">Total Invested</span>
-                    <span class="performance-metric-value">${this.formatCurrency(totalContributed)}</span>
+                    <span class="performance-metric-label">Total Invested (${displayCur})</span>
+                    <span class="performance-metric-value">${this.formatCurrency(totalContributed, displayCur)}</span>
                 </div>
                 <div class="performance-metric">
                     <span class="performance-metric-label">Best Performer</span>
@@ -1261,15 +1516,19 @@ class PortfolioDashboard {
             return;
         }
 
-        // Group contributions by month
+        // Group contributions by month and convert to display currency
         const monthlyData = {};
         this.contributions.forEach(contribution => {
             const date = new Date(contribution.date);
             const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            monthlyData[key] = (monthlyData[key] || 0) + contribution.amount;
+            const asset = this.assets.find(a => a.id === contribution.assetId);
+            const assetCurrency = asset ? asset.currency || 'USD' : 'USD';
+            const convertedAmount = this.toDisplayCurrency(contribution.amount, assetCurrency);
+            monthlyData[key] = (monthlyData[key] || 0) + convertedAmount;
         });
 
         const sortedMonths = Object.keys(monthlyData).sort();
+        const displayCur = this.getDisplayCurrency();
         
         this.charts.contributions = new Chart(ctx, {
             type: 'line',
@@ -1279,7 +1538,7 @@ class PortfolioDashboard {
                     return new Date(year, monthNum - 1).toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
                 }),
                 datasets: [{
-                    label: 'Monthly Contributions',
+                    label: `Monthly Contributions (${displayCur})`,
                     data: sortedMonths.map(month => monthlyData[month]),
                     borderColor: '#1FB8CD',
                     backgroundColor: 'rgba(31, 184, 205, 0.1)',
@@ -1300,7 +1559,7 @@ class PortfolioDashboard {
                     y: {
                         beginAtZero: true,
                         ticks: {
-                            callback: (value) => this.formatCurrency(value)
+                            callback: (value) => this.formatCurrency(value, displayCur)
                         }
                     }
                 }
@@ -1394,10 +1653,11 @@ class PortfolioDashboard {
             return;
         }
 
-        // Group assets by type
+        // Group assets by type and convert to display currency
         const typeData = {};
         validAssets.forEach(asset => {
-            typeData[asset.type] = (typeData[asset.type] || 0) + asset.currentValue;
+            const convertedValue = this.toDisplayCurrency(asset.currentValue, asset.currency || 'USD');
+            typeData[asset.type] = (typeData[asset.type] || 0) + convertedValue;
         });
 
         const colors = ['#1FB8CD', '#FFC185', '#B4413C', '#ECEBD5', '#5D878F'];
@@ -1408,7 +1668,7 @@ class PortfolioDashboard {
             data: {
                 labels: Object.keys(typeData),
                 datasets: [{
-                    data: Object.values(typeData).map(v => this.toDisplayCurrency(v, 'USD')),
+                    data: Object.values(typeData),
                     backgroundColor: colors.slice(0, Object.keys(typeData).length),
                     borderWidth: 2,
                     borderColor: '#fff'

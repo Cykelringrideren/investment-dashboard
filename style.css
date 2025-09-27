@@ -544,26 +544,90 @@ select.form-control {
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-base);
   box-shadow: var(--shadow-lg);
-  max-height: 220px;
+  max-height: 280px;
   overflow-y: auto;
   z-index: 2000;
 }
 
 .suggestion-item {
-  padding: var(--space-8) var(--space-12);
+  padding: var(--space-10) var(--space-12);
   cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-8);
-  font-size: var(--font-size-sm);
+  border-bottom: 1px solid var(--color-card-border-inner);
+  transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
-.suggestion-item:hover {
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:hover,
+.suggestion-item:focus {
   background: var(--color-secondary);
+  outline: none;
+}
+
+.suggestion-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.suggestion-symbol {
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.suggestion-name {
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
 }
 
 .suggestion-meta {
+  font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.2;
+}
+
+.suggestion-item[data-source="crypto"] .suggestion-symbol {
+  color: var(--color-warning);
+}
+
+.suggestion-item[data-type*="ETF"] .suggestion-symbol {
+  color: var(--color-success);
+}
+
+.suggestion-item[data-type*="EQUITY"] .suggestion-symbol,
+.suggestion-item[data-type*="Stock"] .suggestion-symbol {
+  color: var(--color-primary);
+}
+
+/* Improve spacing for suggestion items */
+.suggestion-main {
+  min-height: 48px;
+  justify-content: center;
+}
+
+.suggestion-symbol strong {
+  font-weight: var(--font-weight-semibold);
+}
+
+.suggestion-loading,
+.suggestion-empty,
+.suggestion-error {
+  padding: var(--space-12);
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.suggestion-error {
+  color: var(--color-error);
 }
 
 /* Card component */
