@@ -1323,6 +1323,10 @@ select.form-control {
   white-space: nowrap;
 }
 
+.btn-cancel {
+  order: 0;
+}
+
 /* Form help text */
 .form-help {
   display: block;

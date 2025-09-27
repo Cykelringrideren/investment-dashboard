@@ -437,7 +437,7 @@ class PortfolioDashboard {
         document.getElementById('exportBtn').addEventListener('click', () => this.exportData());
 
         // Modal management
-        document.querySelectorAll('.modal-close').forEach(btn => {
+        document.querySelectorAll('.modal-close, .btn-cancel').forEach(btn => {
             btn.addEventListener('click', (e) => this.closeModal(e.target.closest('.modal')));
         });
 
@@ -501,7 +501,8 @@ class PortfolioDashboard {
         msgDiv.className = `validation-message ${validation.isValid ? 'validation-success' : 'validation-error'}`;
 
         if (validation.isValid) {
-            msgDiv.textContent = `✓ Found: ${validation.name} - $${validation.price.toFixed(2)}`;
+            const cur = validation.currency || 'USD';
+            msgDiv.textContent = `✓ Found: ${validation.name} - ${this.formatCurrency(validation.price, cur)} (${cur})`;
             if (nameInput) nameInput.value = validation.name;
             if (priceInput) priceInput.value = validation.price.toFixed(2);
         } else {
@@ -523,7 +524,7 @@ class PortfolioDashboard {
         }
         try {
             // Yahoo Finance symbol suggest endpoint
-            const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=5&newsCount=0`;
+            const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`;
             const res = await fetch(url);
             if (!res.ok) throw new Error('Search failed');
             const data = await res.json();
@@ -563,6 +564,8 @@ class PortfolioDashboard {
                     // fetch a fresh price to reflect the selected symbol
                     const priceData = typeSelect && typeSelect.value === 'Crypto' ? await this.fetchCryptoPrice(symbol) : await this.fetchStockPrice(symbol);
                     if (priceInput && priceData && typeof priceData.price === 'number') priceInput.value = priceData.price.toFixed(2);
+                    // attach currency hint on the name field
+                    nameInput.setAttribute('data-currency', currency);
                     container.classList.add('hidden');
                     container.innerHTML = '';
                     // force revalidation summary
@@ -814,6 +817,9 @@ class PortfolioDashboard {
             lastUpdated: new Date().toISOString()
         };
 
+        // Try to infer currency from last validation or cached fetch
+        const guessed = await this.validateAndFetchAssetData(symbol, type);
+        assetData.currency = guessed && guessed.currency ? guessed.currency : 'USD';
         assetData.currentValue = assetData.currentPrice * assetData.shares;
 
         if (this.editingAsset) {
