@@ -15,9 +15,6 @@
                 <div class="header-actions">
                     <button class="btn btn--secondary" id="refreshPricesBtn">Refresh Prices</button>
                     <span class="last-refresh" id="lastRefresh">Never updated</span>
-                    <label class="demo-mode-toggle">
-                        <input type="checkbox" id="demoModeToggle" checked> Demo Mode
-                    </label>
                     <label class="sr-only" for="displayCurrency">Display Currency</label>
                     <select class="form-control" id="displayCurrency" title="Display Currency">
                         <option value="USD" selected>USD</option>
@@ -354,25 +351,15 @@
                                 <option value="SEK">SEK</option>
                                 <option value="NOK">NOK</option>
                             </select>
-                            <small class="form-help">Affects Current Price and Cost Basis fields</small>
+                            <small class="form-help">Reflects the native currency of the chosen asset</small>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Type *</label>
-                            <select class="form-control" name="type" required>
-                                <option value="">Select Type</option>
-                                <option value="Stock">Stock</option>
-                                <option value="ETF">ETF</option>
-                                <option value="Crypto">Crypto</option>
-                                <option value="Bond">Bond</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
+                        
                         <div class="form-group">
                             <label class="form-label">Asset Name *</label>
                             <input type="text" class="form-control" name="name" required placeholder="Will be auto-filled">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Current Price *</label>
+                            <label class="form-label">Current Price * <small class="text-secondary" id="currentPriceCurrencyHint"></small></label>
                             <input type="number" class="form-control" name="currentPrice" step="0.01" min="0" required placeholder="Will be auto-filled">
                         </div>
                         <div class="form-group">
@@ -380,9 +367,9 @@
                             <input type="number" class="form-control" name="shares" step="0.01" min="0" required placeholder="Number of shares owned">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Total Cost Basis *</label>
+                            <label class="form-label">Total Cost Basis * <small class="text-secondary" id="costBasisCurrencyHint"></small></label>
                             <input type="number" class="form-control" name="totalContributed" step="0.01" min="0" required placeholder="Total amount invested">
-                            <small class="form-help">Recorded in the selected asset currency</small>
+                            <small class="form-help">Recorded in the asset's native currency</small>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Expected Annual Growth Rate (%)</label>
@@ -432,22 +419,7 @@
         </div>
     </div>
 
-    <!-- Info Panel for Demo Mode -->
-    <div id="demoInfoPanel" class="info-panel hidden">
-        <div class="info-panel-content">
-            <h3>📊 Demo Mode Active</h3>
-            <p>The application is running with sample data to demonstrate all features:</p>
-            <ul>
-                <li>✅ <strong>Stocks</strong>: Apple, Microsoft, Tesla, and 30+ more companies</li>
-                <li>✅ <strong>ETFs</strong>: SPY, QQQ, VTI, and other popular funds</li>
-                <li>✅ <strong>Bonds</strong>: Treasury and corporate bond ETFs</li>
-                <li>✅ <strong>Crypto</strong>: Bitcoin, Ethereum, and major altcoins</li>
-                <li>✅ <strong>Multiple Currencies</strong>: USD, EUR, DKK, GBP, and more</li>
-            </ul>
-            <p>Try searching for any asset in the "Add Assets" dropdown to see all types working!</p>
-            <button class="btn btn--secondary" onclick="document.getElementById('demoInfoPanel').classList.add('hidden')">Got it!</button>
-        </div>
-    </div>
+    
 
     <!-- Notifications Container -->
     <div id="notifications" class="notifications-container"></div>

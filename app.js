@@ -17,6 +17,7 @@ class PortfolioDashboard {
         this.searchTerm = '';
         this.editingAsset = null;
         this.nextAssetId = 1;
+        this.selectedAsset = null;
         this.charts = {};
         this.priceCache = new Map();
         this.cacheTimeout = 15 * 60 * 1000; // 15 minutes
@@ -72,7 +73,7 @@ class PortfolioDashboard {
 					keyParam: 'token'
 				}
 			],
-			// Yahoo Finance endpoints (kept as fallback)
+            // Yahoo Finance endpoints (kept as fallback)
 			yahooQuote: "https://query1.finance.yahoo.com/v7/finance/quote?symbols=",
 			yahooSearch: "https://query1.finance.yahoo.com/v1/finance/search",
 			// CoinGecko endpoints (working)
@@ -80,9 +81,7 @@ class PortfolioDashboard {
 			cryptoList: "https://api.coingecko.com/api/v3/coins/list",
 			// Exchange rates endpoint
 			exchangeRates: "https://api.exchangerate-api.com/v4/latest/USD",
-			// Enhanced demo data with more stocks
-			demoMode: true, // Enable demo mode by default since external APIs require keys
-			// Add a comprehensive stock list for fallback
+            // Add a comprehensive stock list for fallback
 			stockSymbols: [
 				'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'TSLA', 'NVDA', 'META', 'NFLX', 'ORCL',
 				'CRM', 'ADBE', 'AMD', 'INTC', 'PYPL', 'DIS', 'BA', 'GE', 'F', 'GM',
@@ -92,7 +91,7 @@ class PortfolioDashboard {
 			]
 		};
 
-        // Enhanced demo price data for testing with more assets
+        // Minimal fallback price seeds for last-resort cases
         this.demoPrices = {
             // Major Tech Stocks
             'AAPL': { price: 175.50, name: 'Apple Inc.', type: 'Stock', currency: 'USD' },
@@ -562,7 +561,10 @@ class PortfolioDashboard {
             this.loadCryptoList(),
             this.loadExchangeRates()
         ]);
-        this.loadSampleData();
+        // Start with empty portfolio; demo mode removed
+        this.assets = [];
+        this.contributions = [];
+        this.nextAssetId = 1;
         this.updatePortfolioSummary();
         this.renderAssetsTable();
         this.renderRecentAssets();
@@ -571,18 +573,7 @@ class PortfolioDashboard {
         this.renderPerformanceSummary();
         this.populateAssetSelect();
         
-        // Show demo mode notification and info panel
-        if (this.apis.demoMode) {
-            setTimeout(() => {
-                this.showNotification('Running in demo mode with sample data. All asset types are supported!', 'info');
-                // Show info panel for first-time users
-                const infoPanel = document.getElementById('demoInfoPanel');
-                if (infoPanel && !localStorage.getItem('demo_info_shown')) {
-                    infoPanel.classList.remove('hidden');
-                    localStorage.setItem('demo_info_shown', 'true');
-                }
-            }, 1000);
-        }
+        // Demo mode removed
         
         // Initialize charts after a small delay to ensure DOM is ready
         setTimeout(() => {
@@ -593,66 +584,7 @@ class PortfolioDashboard {
 		this.updateProjectionLabel();
     }
 
-    loadSampleData() {
-        // In demo mode, add some sample assets to demonstrate functionality
-        if (this.apis.demoMode) {
-            this.assets = [
-                {
-                    id: 1,
-                    name: 'Apple Inc.',
-                    symbol: 'AAPL',
-                    type: 'Stock',
-                    currentPrice: 175.50,
-                    shares: 10,
-                    totalContributed: 1500,
-                    currentValue: 1755,
-                    expectedGrowthRate: 8.0,
-                    dateAdded: '2024-01-15',
-                    lastUpdated: new Date().toISOString(),
-                    currency: 'USD'
-                },
-                {
-                    id: 2,
-                    name: 'SPDR S&P 500 ETF Trust',
-                    symbol: 'SPY',
-                    type: 'ETF',
-                    currentPrice: 445.80,
-                    shares: 5,
-                    totalContributed: 2000,
-                    currentValue: 2229,
-                    expectedGrowthRate: 7.0,
-                    dateAdded: '2024-02-01',
-                    lastUpdated: new Date().toISOString(),
-                    currency: 'USD'
-                },
-                {
-                    id: 3,
-                    name: 'Bitcoin',
-                    symbol: 'bitcoin',
-                    type: 'Crypto',
-                    currentPrice: 65420.00,
-                    shares: 0.05,
-                    totalContributed: 3000,
-                    currentValue: 3271,
-                    expectedGrowthRate: 15.0,
-                    dateAdded: '2024-03-01',
-                    lastUpdated: new Date().toISOString(),
-                    currency: 'USD'
-                }
-            ];
-            this.contributions = [
-                { assetId: 1, date: '2024-01-15', amount: 1500 },
-                { assetId: 2, date: '2024-02-01', amount: 2000 },
-                { assetId: 3, date: '2024-03-01', amount: 3000 }
-            ];
-            this.nextAssetId = 4;
-        } else {
-            // Start with empty portfolio in live mode
-            this.assets = [];
-            this.contributions = [];
-            this.nextAssetId = 1;
-        }
-    }
+    loadSampleData() { /* removed demo mode */ }
 
     async loadCryptoList() {
         try {
@@ -718,19 +650,8 @@ class PortfolioDashboard {
 			return cached;
 		}
 
-		// Check demo data first (both demo mode and fallback)
-		const demoData = this.demoPrices[sanitizedSymbol];
-		
-		// In demo mode, use predefined prices if available
-		if (this.apis.demoMode && demoData) {
-			const payload = { 
-				price: demoData.price, 
-				name: demoData.name, 
-				currency: demoData.currency || 'USD' 
-			};
-			this.setCachedPrice(cacheKey, payload);
-			return payload;
-		}
+        // Minimal fallback seed
+        const demoData = this.demoPrices[sanitizedSymbol];
 
 		// Try backend API first if available
 		if (this.backendEnabled) {
@@ -758,7 +679,7 @@ class PortfolioDashboard {
 			}
 		}
 
-		// Try Yahoo Finance as last resort
+        // Try Yahoo Finance as last resort
 		try {
 			let resolvedSymbol = symbol;
 			// Handle ISIN to symbol resolution
@@ -791,8 +712,8 @@ class PortfolioDashboard {
 			console.log(`Yahoo Finance API failed for ${symbol}:`, error.message);
 		}
 
-		// Ultimate fallback: use demo data if available, or generate reasonable fake data
-		if (demoData) {
+        // Ultimate fallback: use minimal seed if available, or generate reasonable fake data
+        if (demoData) {
 			const payload = { 
 				price: demoData.price, 
 				name: demoData.name, 
@@ -926,25 +847,14 @@ class PortfolioDashboard {
 			return cached;
 		}
 
-		// Check demo data 
-		const demoData = this.demoPrices[keySymbol];
-
-		// If in demo mode and we have demo data, use it directly
-		if (this.apis.demoMode && demoData) {
-			const payload = { 
-				price: demoData.price, 
-				name: demoData.name, 
-				currency: demoData.currency || 'USD' 
-			};
-			this.setCachedPrice(cacheKey, payload);
-			return payload;
-		}
+        // Minimal fallback seed
+        const demoData = this.demoPrices[keySymbol];
 
 		try {
 			const cryptoId = this.getCryptoId(symbol);
 			
-			// Try real CoinGecko API first (when not in demo mode or when no demo data available)
-			if (cryptoId && (!this.apis.demoMode || !demoData)) {
+            // Try real CoinGecko API first
+            if (cryptoId) {
 				const response = await fetch(`${this.apis.coinGecko}?ids=${cryptoId}&vs_currencies=usd`);
 				if (response.ok) {
 					const data = await response.json();
@@ -956,7 +866,7 @@ class PortfolioDashboard {
 				}
 			}
 			
-			// If API fails but we have demo data, use it
+            // If API fails but we have seed data, use it
 			if (demoData) {
 				const payload = { 
 					price: demoData.price, 
@@ -969,7 +879,7 @@ class PortfolioDashboard {
 			
 			throw new Error('Crypto not found');
 		} catch (error) {
-			// Final fallback: generate demo data
+            // Final fallback: generate data
 			const price = demoData ? demoData.price : (Math.random() * 50000 + 1000);
 			const name = demoData ? demoData.name : symbol.charAt(0).toUpperCase() + symbol.slice(1);
 			const payload = { price, name, currency: 'USD' };
@@ -1017,8 +927,8 @@ class PortfolioDashboard {
         
         try {
             let priceData;
-            
-            if (type === 'Crypto') {
+            const resolvedType = (type || this.selectedAsset?.type || '').toString();
+            if (resolvedType === 'Crypto') {
                 priceData = await this.fetchCryptoPrice(symbol);
             } else {
                 priceData = await this.fetchStockPrice(symbol);
@@ -1224,28 +1134,7 @@ class PortfolioDashboard {
             });
         }
 
-        // Demo mode toggle
-        const demoModeToggle = document.getElementById('demoModeToggle');
-        if (demoModeToggle) {
-            demoModeToggle.addEventListener('change', (e) => {
-                this.apis.demoMode = e.target.checked;
-                const mode = e.target.checked ? 'demo' : 'live';
-                
-                if (!e.target.checked) {
-                    // Warn about live mode limitations
-                    this.showNotification('⚠️ Live mode: Stock APIs may be limited due to CORS. Crypto data will work via CoinGecko.', 'warning');
-                } else {
-                    this.showNotification(`Switched to ${mode} mode. Reloading data...`, 'info');
-                }
-                
-                // Clear cache to force fresh data
-                this.priceCache.clear();
-                // Reload sample data based on new mode
-                this.loadSampleData();
-                // Refresh all displays
-                this.refreshAllData();
-            });
-        }
+        // Demo mode removed
 
         // Modal management
         document.querySelectorAll('.modal-close, .btn-cancel').forEach(btn => {
@@ -1286,10 +1175,8 @@ class PortfolioDashboard {
         // Symbol validation + suggestions
         setTimeout(() => {
             const symbolInput = document.querySelector('input[name="symbol"]');
-            const typeSelect = document.querySelector('select[name="type"]');
-            if (symbolInput && typeSelect) {
+            if (symbolInput) {
                 symbolInput.addEventListener('blur', () => this.validateSymbolInput());
-                typeSelect.addEventListener('change', () => this.validateSymbolInput());
 
                 let suggestTimer = null;
                 symbolInput.addEventListener('input', (e) => {
@@ -1341,12 +1228,11 @@ class PortfolioDashboard {
 
     async validateSymbolInput() {
         const symbolInput = document.querySelector('input[name="symbol"]');
-        const typeSelect = document.querySelector('select[name="type"]');
         const nameInput = document.querySelector('input[name="name"]');
         const priceInput = document.querySelector('input[name="currentPrice"]');
         const validationMsg = document.getElementById('symbolValidation');
 
-        if (!symbolInput || !typeSelect || !symbolInput.value || !typeSelect.value) return;
+        if (!symbolInput || !symbolInput.value) return;
 
         if (validationMsg) validationMsg.remove();
 
@@ -1362,8 +1248,8 @@ class PortfolioDashboard {
             return;
         }
 
-        const type = typeSelect.value;
-        const validation = await this.validateAndFetchAssetData(symbol, type);
+        const inferredType = this.selectedAsset?.type || '';
+        const validation = await this.validateAndFetchAssetData(symbol, inferredType);
 
         const msgDiv = document.createElement('div');
         msgDiv.id = 'symbolValidation';
@@ -1371,12 +1257,17 @@ class PortfolioDashboard {
 
         if (validation.isValid) {
             const cur = validation.currency || 'USD';
-            const source = this.apis.demoMode ? ' (Demo Data)' : '';
-            msgDiv.textContent = `✓ Found: ${validation.name} - ${this.formatCurrency(validation.price, cur)} (${cur})${source}`;
+            msgDiv.textContent = `✓ Found: ${validation.name} - ${this.formatCurrency(validation.price, cur)} (${cur})`;
             if (nameInput) nameInput.value = validation.name;
             if (priceInput) priceInput.value = validation.price.toFixed(2);
+            const currencySelect = document.getElementById('assetCurrency');
+            const currentPriceHint = document.getElementById('currentPriceCurrencyHint');
+            const costBasisHint = document.getElementById('costBasisCurrencyHint');
+            if (currencySelect) currencySelect.value = cur;
+            if (currentPriceHint) currentPriceHint.textContent = `(${cur})`;
+            if (costBasisHint) costBasisHint.textContent = `(${cur})`;
         } else {
-            msgDiv.textContent = `⚠ Could not find data for ${symbol} - using generated demo data`;
+            msgDiv.textContent = `⚠ Could not find data for ${symbol}`;
             if (nameInput) nameInput.value = this.generateCompanyName(symbol);
             if (priceInput) priceInput.value = this.generateRealisticPrice(symbol).toFixed(2);
         }
@@ -1653,17 +1544,7 @@ class PortfolioDashboard {
                 this.searchCryptoAssets(query)
             ]);
             
-            // In demo mode, balance results to show variety of asset types
-            let balancedStockResults = stockResults;
-            let balancedCryptoResults = cryptoResults;
-            
-            if (this.apis.demoMode) {
-                // Limit each type to show variety
-                balancedStockResults = stockResults.slice(0, 6);
-                balancedCryptoResults = cryptoResults.slice(0, 4);
-            }
-            
-            const allResults = [...balancedStockResults, ...balancedCryptoResults];
+            const allResults = [...stockResults.slice(0, 10), ...cryptoResults.slice(0, 10)];
             
             if (allResults.length === 0) {
                 container.innerHTML = '<div class="suggestion-empty">No assets found</div>';
@@ -1778,8 +1659,9 @@ class PortfolioDashboard {
         const symbolInput = document.querySelector('input[name="symbol"]');
         const nameInput = document.querySelector('input[name="name"]');
         const priceInput = document.querySelector('input[name="currentPrice"]');
-        const typeSelect = document.querySelector('select[name="type"]');
         const currencySelect = document.getElementById('assetCurrency');
+        const currentPriceHint = document.getElementById('currentPriceCurrencyHint');
+        const costBasisHint = document.getElementById('costBasisCurrencyHint');
         const container = document.getElementById('symbolSuggestions');
         
         const symbol = item.getAttribute('data-symbol');
@@ -1787,37 +1669,32 @@ class PortfolioDashboard {
         const currency = item.getAttribute('data-currency') || 'USD';
         const exchange = item.getAttribute('data-exchange') || '';
         const assetType = item.getAttribute('data-type') || '';
+        const source = item.getAttribute('data-source') || '';
         
         if (symbolInput) symbolInput.value = symbol;
         if (nameInput) nameInput.value = name;
         if (currencySelect) currencySelect.value = currency;
-        
-        // Auto-detect asset type based on the suggestion
-        const source = item.getAttribute('data-source') || '';
-        if (typeSelect) {
-            if (source === 'crypto') {
-                typeSelect.value = 'Crypto';
-            } else if (assetType) {
-                const typeMapping = {
-                    'EQUITY': 'Stock',
-                    'ETF': 'ETF',
-                    'CRYPTOCURRENCY': 'Crypto',
-                    'BOND': 'Bond'
-                };
-                const mappedType = typeMapping[assetType.toUpperCase()];
-                if (mappedType) {
-                    typeSelect.value = mappedType;
-                }
-            }
-        }
+        if (currentPriceHint) currentPriceHint.textContent = `(${currency})`;
+        if (costBasisHint) costBasisHint.textContent = `(${currency})`;
+        this.selectedAsset = {
+            symbol,
+            name,
+            currency,
+            type: source === 'crypto' ? 'Crypto' : (assetType || 'Stock')
+        };
         
         // Fetch fresh price data
         try {
-            const priceData = typeSelect && typeSelect.value === 'Crypto' 
+            const priceData = this.selectedAsset.type === 'Crypto' 
                 ? await this.fetchCryptoPrice(symbol) 
                 : await this.fetchStockPrice(symbol);
             if (priceInput && priceData && typeof priceData.price === 'number') {
                 priceInput.value = priceData.price.toFixed(2);
+                // Keep hints in sync with fetched price currency
+                const cur = priceData.currency || currencySelect?.value || 'USD';
+                if (currencySelect) currencySelect.value = cur;
+                if (currentPriceHint) currentPriceHint.textContent = `(${cur})`;
+                if (costBasisHint) costBasisHint.textContent = `(${cur})`;
             }
         } catch (error) {
             console.log('Could not fetch price for selected asset');
@@ -2021,8 +1898,11 @@ class PortfolioDashboard {
 
     openAssetModal(asset = null) {
         this.editingAsset = asset;
+        this.selectedAsset = null;
         const modal = document.getElementById('assetModal');
         const form = document.getElementById('assetForm');
+        const currentPriceHint = document.getElementById('currentPriceCurrencyHint');
+        const costBasisHint = document.getElementById('costBasisCurrencyHint');
         const title = document.getElementById('assetModalTitle');
 
         title.textContent = asset ? 'Edit Asset' : 'Add Asset';
@@ -2041,11 +1921,15 @@ class PortfolioDashboard {
             form.expectedGrowthRate.value = asset.expectedGrowthRate;
             const currencySelect = document.getElementById('assetCurrency');
             if (currencySelect && asset.currency) currencySelect.value = asset.currency;
+            if (currentPriceHint) currentPriceHint.textContent = `(${asset.currency || 'USD'})`;
+            if (costBasisHint) costBasisHint.textContent = `(${asset.currency || 'USD'})`;
         } else {
             form.reset();
             form.expectedGrowthRate.value = 7.0;
             const currencySelect = document.getElementById('assetCurrency');
             if (currencySelect) currencySelect.value = this.getDisplayCurrency();
+            if (currentPriceHint) currentPriceHint.textContent = `(${currencySelect ? currencySelect.value : 'USD'})`;
+            if (costBasisHint) costBasisHint.textContent = `(${currencySelect ? currencySelect.value : 'USD'})`;
         }
 
         modal.classList.remove('hidden');
@@ -2058,10 +1942,10 @@ class PortfolioDashboard {
         const formData = new FormData(e.target);
         
         const symbol = formData.get('symbol').trim().toUpperCase();
-        const type = formData.get('type');
+        const inferredType = this.selectedAsset?.type || '';
         
         // Validate required fields
-        if (!symbol || !type || !formData.get('name') || !formData.get('shares') || !formData.get('totalContributed')) {
+        if (!symbol || !formData.get('name') || !formData.get('shares') || !formData.get('totalContributed')) {
             this.showNotification('Please fill in all required fields', 'error');
             return;
         }
@@ -2070,7 +1954,7 @@ class PortfolioDashboard {
         const assetData = {
             name: formData.get('name'),
             symbol: symbol,
-            type: type,
+            type: inferredType || 'Stock',
             currentPrice: parseFloat(formData.get('currentPrice')) || 0,
             shares: parseFloat(formData.get('shares')),
             totalContributed: parseFloat(formData.get('totalContributed')),
@@ -2081,7 +1965,7 @@ class PortfolioDashboard {
         };
 
         // Try to infer currency from quote if available; override select if present
-        const guessed = await this.validateAndFetchAssetData(symbol, type);
+        const guessed = await this.validateAndFetchAssetData(symbol, inferredType);
         if (guessed && guessed.currency) {
             assetData.currency = guessed.currency;
             if (currencySelect) currencySelect.value = guessed.currency;

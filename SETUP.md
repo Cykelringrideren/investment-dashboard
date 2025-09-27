@@ -41,7 +41,7 @@ The enhanced frontend now works standalone with all improvements:
 
 ```bash
 # Simply open index.html in your browser
-# No additional setup required - demo mode included
+# No additional setup required
 ```
 
 **Features Available:**
@@ -51,7 +51,7 @@ The enhanced frontend now works standalone with all improvements:
 - ✅ Rate limiting and circuit breakers
 - ✅ Settings management UI
 - ✅ API key management
-- ⚠️ Limited to CORS-enabled APIs + demo data
+- ⚠️ Limited to CORS-enabled APIs
 
 ### Option 2: With Python Backend (Recommended)
 Full yfinance integration without CORS limitations:
@@ -251,7 +251,7 @@ curl -X POST http://localhost:5000/api/quotes \
 
 3. **CORS Errors**:
    - Use backend for full API access
-   - Enable demo mode for testing
+   - Ensure backend is running for full functionality
    - Check browser console for details
 
 4. **Cache Issues**:
@@ -319,7 +319,7 @@ If you encounter issues:
 
 1. Check browser console for errors
 2. Verify backend logs if applicable
-3. Test with demo mode enabled
+3. Verify backend connectivity
 4. Review Settings tab for status information
 5. Check API quotas and rate limits
 
