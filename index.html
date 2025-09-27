@@ -15,6 +15,15 @@
                 <div class="header-actions">
                     <button class="btn btn--secondary" id="refreshPricesBtn">Refresh Prices</button>
                     <span class="last-refresh" id="lastRefresh">Never updated</span>
+                    <label class="sr-only" for="displayCurrency">Display Currency</label>
+                    <select class="form-control" id="displayCurrency" title="Display Currency">
+                        <option value="USD" selected>USD</option>
+                        <option value="EUR">EUR</option>
+                        <option value="DKK">DKK</option>
+                        <option value="GBP">GBP</option>
+                        <option value="SEK">SEK</option>
+                        <option value="NOK">NOK</option>
+                    </select>
                 </div>
             </div>
             <div class="header-stats">
@@ -215,7 +224,8 @@
                     <div class="modal-body">
                         <div class="form-group">
                             <label class="form-label">Symbol *</label>
-                            <input type="text" class="form-control" name="symbol" required placeholder="e.g., AAPL, MSFT, bitcoin">
+                            <input type="text" class="form-control" name="symbol" required placeholder="e.g., AAPL, MSFT, NOVO-B.CO, bitcoin" autocomplete="off">
+                            <div id="symbolSuggestions" class="suggestions hidden" role="listbox" aria-label="Matching instruments"></div>
                             <small class="form-help">Enter stock ticker (e.g., AAPL, NOVO-B.CO) or crypto name (e.g., bitcoin, ethereum)</small>
                         </div>
                         <div class="form-group">

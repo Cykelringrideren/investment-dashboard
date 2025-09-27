@@ -306,6 +306,7 @@ class PortfolioDashboard {
             }
             
             asset.currentPrice = priceData.price;
+            asset.currency = priceData.currency || 'USD';
             asset.currentValue = asset.currentPrice * asset.shares;
             asset.lastUpdated = new Date().toISOString();
             
@@ -461,13 +462,20 @@ class PortfolioDashboard {
             header.addEventListener('click', (e) => this.handleSort(e.target.dataset.sort));
         });
 
-        // Symbol validation
+        // Symbol validation + suggestions
         setTimeout(() => {
             const symbolInput = document.querySelector('input[name="symbol"]');
             const typeSelect = document.querySelector('select[name="type"]');
             if (symbolInput && typeSelect) {
                 symbolInput.addEventListener('blur', () => this.validateSymbol());
                 typeSelect.addEventListener('change', () => this.validateSymbol());
+
+                let suggestTimer = null;
+                symbolInput.addEventListener('input', (e) => {
+                    clearTimeout(suggestTimer);
+                    const q = e.target.value.trim();
+                    suggestTimer = setTimeout(() => this.fetchSymbolSuggestions(q), 250);
+                });
             }
         }, 100);
     }
@@ -503,6 +511,68 @@ class PortfolioDashboard {
         }
 
         symbolInput.parentNode.appendChild(msgDiv);
+    }
+
+    async fetchSymbolSuggestions(query) {
+        const container = document.getElementById('symbolSuggestions');
+        if (!container) return;
+        if (!query || query.length < 2) {
+            container.classList.add('hidden');
+            container.innerHTML = '';
+            return;
+        }
+        try {
+            // Yahoo Finance symbol suggest endpoint
+            const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=5&newsCount=0`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('Search failed');
+            const data = await res.json();
+            const quotes = data.quotes || [];
+            if (quotes.length === 0) {
+                container.classList.add('hidden');
+                container.innerHTML = '';
+                return;
+            }
+            container.innerHTML = quotes.map(q => {
+                const symbol = q.symbol || '';
+                const name = q.shortname || q.longname || '';
+                const exch = q.exchange || q.exchangeDisplay || '';
+                const curr = q.currency || '';
+                const isin = q.isin || '';
+                const meta = [exch, curr, isin].filter(Boolean).join(' · ');
+                return `
+                    <div class="suggestion-item" role="option" data-symbol="${symbol}" data-currency="${curr}" data-name="${name}">
+                        <div><strong>${symbol}</strong> — ${name}</div>
+                        <div class="suggestion-meta">${meta}</div>
+                    </div>
+                `;
+            }).join('');
+            container.classList.remove('hidden');
+
+            container.querySelectorAll('.suggestion-item').forEach(item => {
+                item.addEventListener('click', async () => {
+                    const symbolInput = document.querySelector('input[name="symbol"]');
+                    const nameInput = document.querySelector('input[name="name"]');
+                    const priceInput = document.querySelector('input[name="currentPrice"]');
+                    const typeSelect = document.querySelector('select[name="type"]');
+                    const symbol = item.getAttribute('data-symbol');
+                    const name = item.getAttribute('data-name');
+                    const currency = item.getAttribute('data-currency') || 'USD';
+                    if (symbolInput) symbolInput.value = symbol;
+                    if (nameInput) nameInput.value = name;
+                    // fetch a fresh price to reflect the selected symbol
+                    const priceData = typeSelect && typeSelect.value === 'Crypto' ? await this.fetchCryptoPrice(symbol) : await this.fetchStockPrice(symbol);
+                    if (priceInput && priceData && typeof priceData.price === 'number') priceInput.value = priceData.price.toFixed(2);
+                    container.classList.add('hidden');
+                    container.innerHTML = '';
+                    // force revalidation summary
+                    this.validateSymbol();
+                });
+            });
+        } catch (e) {
+            container.classList.add('hidden');
+            container.innerHTML = '';
+        }
     }
 
     switchTab(tabName) {
@@ -547,14 +617,15 @@ class PortfolioDashboard {
     }
 
     updatePortfolioSummary() {
-        const totalValue = this.assets.reduce((sum, asset) => sum + (asset.currentValue || 0), 0);
-        const totalContributed = this.assets.reduce((sum, asset) => sum + asset.totalContributed, 0);
+        const displayCur = this.getDisplayCurrency();
+        const totalValue = this.assets.reduce((sum, asset) => sum + this.toDisplayCurrency((asset.currentValue || 0), asset.currency || 'USD'), 0);
+        const totalContributed = this.assets.reduce((sum, asset) => sum + this.toDisplayCurrency(asset.totalContributed, asset.currency || 'USD'), 0);
         const totalGain = totalValue - totalContributed;
         const totalGainPercent = totalContributed > 0 ? (totalGain / totalContributed) * 100 : 0;
 
-        document.getElementById('totalValue').textContent = this.formatCurrency(totalValue);
-        document.getElementById('totalContributed').textContent = this.formatCurrency(totalContributed);
-        document.getElementById('totalGain').textContent = this.formatCurrency(totalGain);
+        document.getElementById('totalValue').textContent = this.formatCurrency(totalValue, displayCur);
+        document.getElementById('totalContributed').textContent = this.formatCurrency(totalContributed, displayCur);
+        document.getElementById('totalGain').textContent = this.formatCurrency(totalGain, displayCur);
         
         const gainElement = document.getElementById('totalGain');
         const gainPercentElement = document.getElementById('totalGainPercent');
@@ -596,9 +667,14 @@ class PortfolioDashboard {
             return;
         }
 
+        const displayCur = this.getDisplayCurrency();
         tbody.innerHTML = filteredAssets.map(asset => {
             const gain = (asset.currentValue || 0) - asset.totalContributed;
             const gainPercent = asset.totalContributed > 0 ? (gain / asset.totalContributed) * 100 : 0;
+            const priceDisplay = this.toDisplayCurrency(asset.currentPrice || 0, asset.currency || 'USD');
+            const valueDisplay = this.toDisplayCurrency(asset.currentValue || 0, asset.currency || 'USD');
+            const contribDisplay = this.toDisplayCurrency(asset.totalContributed || 0, asset.currency || 'USD');
+            const gainDisplay = this.toDisplayCurrency(gain, asset.currency || 'USD');
             
             return `
                 <tr>
@@ -610,13 +686,13 @@ class PortfolioDashboard {
                     </td>
                     <td><span class="asset-type asset-type--${asset.type.toLowerCase()}">${asset.type}</span></td>
                     <td><strong>${asset.symbol}</strong></td>
-                    <td>${asset.currentPrice ? this.formatCurrency(asset.currentPrice) : '$0.00'}</td>
+                    <td>${asset.currentPrice ? this.formatCurrency(priceDisplay, displayCur) : this.formatCurrency(0, displayCur)}</td>
                     <td>${this.formatNumber(asset.shares)}</td>
-                    <td><strong>${asset.currentValue ? this.formatCurrency(asset.currentValue) : '$0.00'}</strong></td>
-                    <td>${this.formatCurrency(asset.totalContributed)}</td>
+                    <td><strong>${asset.currentValue ? this.formatCurrency(valueDisplay, displayCur) : this.formatCurrency(0, displayCur)}</strong></td>
+                    <td>${this.formatCurrency(contribDisplay, displayCur)}</td>
                     <td>
                         <span class="${gain >= 0 ? 'text-success' : 'text-error'}">
-                            ${gain >= 0 ? '+' : ''}${this.formatCurrency(gain)} (${gainPercent.toFixed(1)}%)
+                            ${gain >= 0 ? '+' : ''}${this.formatCurrency(gainDisplay, displayCur)} (${gainPercent.toFixed(1)}%)
                         </span>
                     </td>
                     <td>${asset.expectedGrowthRate}%</td>
@@ -845,9 +921,12 @@ class PortfolioDashboard {
             return;
         }
 
+        const displayCur = this.getDisplayCurrency();
         container.innerHTML = recentAssets.map(asset => {
             const gain = (asset.currentValue || 0) - asset.totalContributed;
             const gainPercent = asset.totalContributed > 0 ? (gain / asset.totalContributed) * 100 : 0;
+            const valueDisplay = this.toDisplayCurrency(asset.currentValue || 0, asset.currency || 'USD');
+            const gainDisplay = this.toDisplayCurrency(gain, asset.currency || 'USD');
             
             return `
                 <div class="recent-asset-item">
@@ -856,9 +935,9 @@ class PortfolioDashboard {
                         <p>${asset.symbol} • ${asset.type}</p>
                     </div>
                     <div class="recent-asset-value">
-                        <span class="value">${asset.currentValue ? this.formatCurrency(asset.currentValue) : '$0.00'}</span>
+                        <span class="value">${asset.currentValue ? this.formatCurrency(valueDisplay, displayCur) : this.formatCurrency(0, displayCur)}</span>
                         <span class="change ${gain >= 0 ? 'positive' : 'negative'}">
-                            ${gain >= 0 ? '+' : ''}${this.formatCurrency(gain)} (${gainPercent.toFixed(2)}%)
+                            ${gain >= 0 ? '+' : ''}${this.formatCurrency(gainDisplay, displayCur)} (${gainPercent.toFixed(2)}%)
                         </span>
                     </div>
                 </div>
@@ -882,8 +961,10 @@ class PortfolioDashboard {
             return;
         }
 
+        const displayCur = this.getDisplayCurrency();
         container.innerHTML = recentContributions.map(contribution => {
             const asset = this.assets.find(a => a.id === contribution.assetId);
+            const amountDisplay = this.toDisplayCurrency(contribution.amount, asset ? asset.currency || 'USD' : 'USD');
             return `
                 <div class="contribution-item">
                     <div class="contribution-info">
@@ -891,7 +972,7 @@ class PortfolioDashboard {
                         <p>${this.formatDate(contribution.date)}</p>
                     </div>
                     <div class="contribution-amount">
-                        +${this.formatCurrency(contribution.amount)}
+                        +${this.formatCurrency(amountDisplay, displayCur)}
                     </div>
                 </div>
             `;
@@ -955,8 +1036,8 @@ class PortfolioDashboard {
             return;
         }
         
-        const totalValue = this.assets.reduce((sum, asset) => sum + (asset.currentValue || 0), 0);
-        const totalContributed = this.assets.reduce((sum, asset) => sum + asset.totalContributed, 0);
+        const totalValue = this.assets.reduce((sum, asset) => sum + this.toDisplayCurrency((asset.currentValue || 0), asset.currency || 'USD'), 0);
+        const totalContributed = this.assets.reduce((sum, asset) => sum + this.toDisplayCurrency(asset.totalContributed, asset.currency || 'USD'), 0);
         
         const analyzedAssets = this.assets.filter(asset => asset && asset.totalContributed && asset.totalContributed > 0);
         const gainData = analyzedAssets.map(asset => ({
@@ -1038,12 +1119,13 @@ class PortfolioDashboard {
 
         const colors = ['#1FB8CD', '#FFC185', '#B4413C', '#ECEBD5', '#5D878F', '#DB4545'];
         
+        const displayCur = this.getDisplayCurrency();
         this.charts.allocation = new Chart(ctx, {
             type: 'doughnut',
             data: {
                 labels: validAssets.map(asset => asset.symbol),
                 datasets: [{
-                    data: validAssets.map(asset => asset.currentValue),
+                    data: validAssets.map(asset => this.toDisplayCurrency(asset.currentValue, asset.currency || 'USD')),
                     backgroundColor: colors.slice(0, validAssets.length),
                     borderWidth: 2,
                     borderColor: '#fff'
@@ -1061,7 +1143,7 @@ class PortfolioDashboard {
                             label: (context) => {
                                 const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                 const percentage = ((context.raw / total) * 100).toFixed(1);
-                                return `${context.label}: ${this.formatCurrency(context.raw)} (${percentage}%)`;
+                                return `${context.label}: ${this.formatCurrency(context.raw, displayCur)} (${percentage}%)`;
                             }
                         }
                     }
@@ -1209,16 +1291,18 @@ class PortfolioDashboard {
         }
 
         const period = parseInt(document.getElementById('projectionPeriod').value);
-        const currentTotal = validAssets.reduce((sum, asset) => sum + asset.currentValue, 0);
+        const currentTotal = validAssets.reduce((sum, asset) => sum + this.toDisplayCurrency(asset.currentValue, asset.currency || 'USD'), 0);
         
         // Calculate projected values for each year
         const years = Array.from({length: period + 1}, (_, i) => i);
         const projectedValues = years.map(year => {
             return validAssets.reduce((sum, asset) => {
-                return sum + this.calculateProjectedValue(asset.currentValue, asset.expectedGrowthRate, year);
+                const projected = this.calculateProjectedValue(asset.currentValue, asset.expectedGrowthRate, year);
+                return sum + this.toDisplayCurrency(projected, asset.currency || 'USD');
             }, 0);
         });
 
+        const displayCur = this.getDisplayCurrency();
         this.charts.projection = new Chart(ctx, {
             type: 'line',
             data: {
@@ -1249,7 +1333,7 @@ class PortfolioDashboard {
                     y: {
                         beginAtZero: true,
                         ticks: {
-                            callback: (value) => this.formatCurrency(value)
+                            callback: (value) => this.formatCurrency(value, displayCur)
                         }
                     }
                 }
@@ -1287,12 +1371,13 @@ class PortfolioDashboard {
 
         const colors = ['#1FB8CD', '#FFC185', '#B4413C', '#ECEBD5', '#5D878F'];
         
+        const displayCur = this.getDisplayCurrency();
         this.charts.typeBreakdown = new Chart(ctx, {
             type: 'pie',
             data: {
                 labels: Object.keys(typeData),
                 datasets: [{
-                    data: Object.values(typeData),
+                    data: Object.values(typeData).map(v => this.toDisplayCurrency(v, 'USD')),
                     backgroundColor: colors.slice(0, Object.keys(typeData).length),
                     borderWidth: 2,
                     borderColor: '#fff'
@@ -1310,7 +1395,7 @@ class PortfolioDashboard {
                             label: (context) => {
                                 const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                 const percentage = ((context.raw / total) * 100).toFixed(1);
-                                return `${context.label}: ${this.formatCurrency(context.raw)} (${percentage}%)`;
+                                return `${context.label}: ${this.formatCurrency(context.raw, displayCur)} (${percentage}%)`;
                             }
                         }
                     }
@@ -1435,11 +1520,36 @@ class PortfolioDashboard {
         window.URL.revokeObjectURL(url);
     }
 
-    formatCurrency(amount) {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD'
-        }).format(amount);
+    formatCurrency(amount, currency = 'USD') {
+        try {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: currency
+            }).format(amount);
+        } catch (e) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD'
+            }).format(amount);
+        }
+    }
+
+    toDisplayCurrency(amount, fromCurrency = 'USD') {
+        // Convert from asset currency to selected display currency
+        const from = fromCurrency || 'USD';
+        const to = this.getDisplayCurrency();
+        const rates = this.fxRates || { USD: 1 };
+        const fromRate = rates[from] || 1;
+        const toRate = rates[to] || 1;
+        // All rates are vs USD; convert via USD
+        // amount_in_usd = amount / fromRate; target = amount_in_usd * toRate
+        const amountInUsd = amount / fromRate;
+        return amountInUsd * toRate;
+    }
+
+    getDisplayCurrency() {
+        const selector = document.getElementById('displayCurrency');
+        return selector && selector.value ? selector.value : 'USD';
     }
 
     formatNumber(number) {
